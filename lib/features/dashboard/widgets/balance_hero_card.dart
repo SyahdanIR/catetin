@@ -6,9 +6,9 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../shared/widgets/meemo_mascot.dart';
 
 class BalanceHeroCard extends StatefulWidget {
-  final double totalBalance;
-  final double monthlyIncome;
-  final double monthlyExpense;
+  final num totalBalance;
+  final num monthlyIncome;
+  final num monthlyExpense;
   final String selectedWalletName;
   final VoidCallback onWalletTap;
   final VoidCallback onDetailsTap;

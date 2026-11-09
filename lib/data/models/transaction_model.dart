@@ -6,12 +6,15 @@ enum TransactionType {
 class TransactionModel {
   final String id;
   final String title;
-  final double amount;
+  final int amount; // Monetary amounts in IDR are strictly integers
   final TransactionType type;
   final String categoryId;
   final String walletId;
-  final DateTime date;
-  final String? notes;
+  final DateTime transactionDate;
+  final String? note;
+  final String source; // 'manual' or 'receipt'
+  final DateTime createdAt;
+  final DateTime updatedAt;
   final bool isRecurring;
 
   const TransactionModel({
@@ -21,20 +24,30 @@ class TransactionModel {
     required this.type,
     required this.categoryId,
     required this.walletId,
-    required this.date,
-    this.notes,
+    required this.transactionDate,
+    this.note,
+    this.source = 'manual',
+    required this.createdAt,
+    required this.updatedAt,
     this.isRecurring = false,
   });
+
+  // Backward compatibility getters for UI
+  DateTime get date => transactionDate;
+  String? get notes => note;
 
   TransactionModel copyWith({
     String? id,
     String? title,
-    double? amount,
+    int? amount,
     TransactionType? type,
     String? categoryId,
     String? walletId,
-    DateTime? date,
-    String? notes,
+    DateTime? transactionDate,
+    String? note,
+    String? source,
+    DateTime? createdAt,
+    DateTime? updatedAt,
     bool? isRecurring,
   }) {
     return TransactionModel(
@@ -44,8 +57,11 @@ class TransactionModel {
       type: type ?? this.type,
       categoryId: categoryId ?? this.categoryId,
       walletId: walletId ?? this.walletId,
-      date: date ?? this.date,
-      notes: notes ?? this.notes,
+      transactionDate: transactionDate ?? this.transactionDate,
+      note: note ?? this.note,
+      source: source ?? this.source,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       isRecurring: isRecurring ?? this.isRecurring,
     );
   }

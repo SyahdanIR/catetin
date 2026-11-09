@@ -100,7 +100,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   void _saveTransaction() {
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = double.tryParse(_amountController.text) ?? 0.0;
+    final amount = int.tryParse(_amountController.text) ?? 0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Nominal harus lebih besar dari 0')),
@@ -109,19 +109,23 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
 
     final isEditing = widget.transactionToEdit != null;
+    final now = DateTime.now();
     final transaction = TransactionModel(
       id: isEditing
           ? widget.transactionToEdit!.id
-          : 'tx_${DateTime.now().millisecondsSinceEpoch}',
+          : 'tx_${now.millisecondsSinceEpoch}',
       title: _titleController.text.trim(),
       amount: amount,
       type: _type,
       categoryId: _selectedCategoryId,
       walletId: _selectedWalletId,
-      date: _selectedDate,
-      notes: _notesController.text.trim().isEmpty
+      transactionDate: _selectedDate,
+      note: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
+      source: isEditing ? widget.transactionToEdit!.source : 'manual',
+      createdAt: isEditing ? widget.transactionToEdit!.createdAt : now,
+      updatedAt: now,
       isRecurring: _isRecurring,
     );
 
@@ -343,7 +347,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       if (val == null || val.trim().isEmpty) {
                         return 'Masukkan nominal transaksi';
                       }
-                      if (double.tryParse(val) == null) {
+                      if (int.tryParse(val) == null) {
                         return 'Nominal tidak valid';
                       }
                       return null;

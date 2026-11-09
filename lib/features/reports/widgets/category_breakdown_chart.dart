@@ -6,8 +6,8 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../data/models/category_model.dart';
 
 class CategoryBreakdownChart extends StatelessWidget {
-  final Map<String, double> breakdown;
-  final double totalExpense;
+  final Map<String, num> breakdown;
+  final num totalExpense;
 
   const CategoryBreakdownChart({
     super.key,

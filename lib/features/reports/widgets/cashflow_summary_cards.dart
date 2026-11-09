@@ -5,8 +5,8 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 
 class CashflowSummaryCards extends StatelessWidget {
-  final double income;
-  final double expense;
+  final num income;
+  final num expense;
 
   const CashflowSummaryCards({
     super.key,
@@ -73,7 +73,7 @@ class CashflowSummaryCards extends StatelessWidget {
 
   Widget _buildMetricCard({
     required String title,
-    required double amount,
+    required num amount,
     required Color bgColor,
     required Color textColor,
     required IconData icon,

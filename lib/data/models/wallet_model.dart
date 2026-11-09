@@ -3,34 +3,39 @@ import 'package:flutter/material.dart';
 class WalletModel {
   final String id;
   final String name;
+  final int initialBalance;
+  final DateTime createdAt;
   final IconData icon;
-  final double balance;
 
   const WalletModel({
     required this.id,
     required this.name,
-    required this.icon,
-    required this.balance,
+    required this.initialBalance,
+    required this.createdAt,
+    this.icon = Icons.account_balance_wallet_rounded,
   });
 
-  static const List<WalletModel> defaultWallets = [
+  static final List<WalletModel> defaultWallets = [
     WalletModel(
       id: 'main_wallet',
       name: 'Dompet Utama',
+      initialBalance: 0,
+      createdAt: DateTime(2026, 1, 1),
       icon: Icons.account_balance_wallet_rounded,
-      balance: 13082900,
     ),
     WalletModel(
       id: 'bank_bca',
       name: 'Rekening Bank',
+      initialBalance: 0,
+      createdAt: DateTime(2026, 1, 1),
       icon: Icons.account_balance_rounded,
-      balance: 25400000,
     ),
     WalletModel(
       id: 'ewallet',
       name: 'E-Wallet',
+      initialBalance: 0,
+      createdAt: DateTime(2026, 1, 1),
       icon: Icons.phone_android_rounded,
-      balance: 850000,
     ),
   ];
 

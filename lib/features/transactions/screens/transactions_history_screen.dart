@@ -199,7 +199,7 @@ class _TransactionsHistoryScreenState extends State<TransactionsHistoryScreen> {
                 ...sortedDateKeys.map((date) {
                   final dayTransactions = groupedMap[date]!;
                   // Calculate daily net balance
-                  double dailyNet = 0;
+                  int dailyNet = 0;
                   for (final tx in dayTransactions) {
                     if (tx.type == TransactionType.income) {
                       dailyNet += tx.amount;

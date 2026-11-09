@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
+import 'data/database/app_database.dart';
 import 'data/repositories/finance_repository.dart';
 import 'shell/navigation_shell.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set system UI overlay style for seamless edge-to-edge status bar
@@ -17,7 +18,9 @@ void main() {
     ),
   );
 
-  final repository = FinanceRepository();
+  final database = AppDatabase();
+  final repository = FinanceRepository(database: database);
+  await repository.init();
 
   runApp(DompetkuApp(repository: repository));
 }

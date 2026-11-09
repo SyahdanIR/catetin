@@ -526,7 +526,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildPortfolioItem(
     String name,
-    double amount,
+    num amount,
     IconData icon,
     Color color,
   ) {

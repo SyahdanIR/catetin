@@ -17,7 +17,7 @@ enum ScanStep {
 
 class ReceiptItem {
   String name;
-  double price;
+  int price;
   int qty;
 
   ReceiptItem({
@@ -55,8 +55,8 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
     ReceiptItem(name: 'Kopi Susu Gula Aren', price: 12500, qty: 1),
   ];
 
-  double get _totalAmount =>
-      _extractedItems.fold(0.0, (sum, item) => sum + (item.price * item.qty));
+  int get _totalAmount =>
+      _extractedItems.fold(0, (sum, item) => sum + (item.price * item.qty));
 
   void _triggerScan() {
     setState(() => _currentStep = ScanStep.processing);
@@ -70,15 +70,19 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
   }
 
   void _confirmAndSave() {
+    final now = DateTime.now();
     final tx = TransactionModel(
-      id: 'tx_scan_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'tx_scan_${now.millisecondsSinceEpoch}',
       title: 'Belanja di $_merchantName',
       amount: _totalAmount,
       type: TransactionType.expense,
       categoryId: _selectedCategory,
       walletId: 'main_wallet',
-      date: _receiptDate,
-      notes: 'Pindai struk otomatis: ${_extractedItems.length} item',
+      transactionDate: _receiptDate,
+      note: 'Pindai struk otomatis: ${_extractedItems.length} item',
+      source: 'receipt',
+      createdAt: now,
+      updatedAt: now,
     );
 
     widget.repository.addTransaction(tx);
