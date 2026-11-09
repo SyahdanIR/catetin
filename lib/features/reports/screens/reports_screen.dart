@@ -37,7 +37,27 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   ReportPeriod _selectedPeriod = ReportPeriod.month;
   ReportTab _selectedTab = ReportTab.cashflow;
-  final DateTime _currentPeriodDate = DateTime.now();
+  DateTime _currentPeriodDate = DateTime.now();
+
+  void _prevPeriod() {
+    setState(() {
+      _currentPeriodDate = DateTime(
+        _currentPeriodDate.year,
+        _currentPeriodDate.month - 1,
+        1,
+      );
+    });
+  }
+
+  void _nextPeriod() {
+    setState(() {
+      _currentPeriodDate = DateTime(
+        _currentPeriodDate.year,
+        _currentPeriodDate.month + 1,
+        1,
+      );
+    });
+  }
 
   void _exportReport() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -123,13 +143,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const Divider(color: AppColors.borderLight, height: 1),
                     const SizedBox(height: 10),
 
-                    // Date dropdown & Export Button
+                    // Date stepper & Export Button
                     Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                            horizontal: 6,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
                             color: AppColors.background,
@@ -139,18 +159,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             border: Border.all(color: AppColors.borderLight),
                           ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
-                                Icons.calendar_month_rounded,
-                                size: 16,
-                                color: AppColors.inkMuted,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                AppDateFormatter.formatMonthYear(
-                                  _currentPeriodDate,
+                              IconButton(
+                                onPressed: _prevPeriod,
+                                icon: const Icon(
+                                  Icons.chevron_left_rounded,
+                                  size: 20,
+                                  color: AppColors.ink,
                                 ),
-                                style: AppTypography.labelMedium,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                tooltip: 'Bulan Sebelumnya',
+                              ),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                child: Text(
+                                  AppDateFormatter.formatMonthYear(
+                                    _currentPeriodDate,
+                                  ),
+                                  style: AppTypography.labelMedium,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _nextPeriod,
+                                icon: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 20,
+                                  color: AppColors.ink,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                tooltip: 'Bulan Berikutnya',
                               ),
                             ],
                           ),
