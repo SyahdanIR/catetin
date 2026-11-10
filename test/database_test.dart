@@ -727,4 +727,513 @@ void main() {
       }
     });
   });
+
+  group('Phase 2: Financial Reports Tests', () {
+    late AppDatabase database;
+    late FinanceRepository repository;
+
+    Future<void> seedTx({
+      required String id,
+      required String title,
+      required int amount,
+      required TransactionType type,
+      required String categoryId,
+      String walletId = 'main_wallet',
+      required DateTime date,
+    }) async {
+      await repository.addTransaction(
+        TransactionModel(
+          id: id,
+          title: title,
+          amount: amount,
+          type: type,
+          categoryId: categoryId,
+          walletId: walletId,
+          transactionDate: date,
+          createdAt: date,
+          updatedAt: date,
+        ),
+      );
+    }
+
+    setUp(() async {
+      database = AppDatabase(NativeDatabase.memory());
+      repository = FinanceRepository(database: database);
+      await repository.init();
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('1-3 & 9-10. Monthly income, expense, net cash flow, and expense-only category percentages', () async {
+      await seedTx(
+        id: 'm_inc_1',
+        title: 'Gaji November',
+        amount: 6000000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        date: DateTime(2026, 11, 1, 8, 0),
+      );
+      await seedTx(
+        id: 'm_inc_2',
+        title: 'Bonus Project',
+        amount: 2000000,
+        type: TransactionType.income,
+        categoryId: 'bonus',
+        date: DateTime(2026, 11, 15, 19, 30),
+      );
+      await seedTx(
+        id: 'm_exp_food',
+        title: 'Makan Malam',
+        amount: 1500000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2026, 11, 10, 20, 0),
+      );
+      await seedTx(
+        id: 'm_exp_bills',
+        title: 'Listrik & Internet',
+        amount: 500000,
+        type: TransactionType.expense,
+        categoryId: 'bills',
+        date: DateTime(2026, 11, 30, 23, 59, 59),
+      );
+      // Transaction in December must be excluded from November
+      await seedTx(
+        id: 'm_dec_exclude',
+        title: 'Kopi Desember',
+        amount: 300000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2026, 12, 1, 0, 0, 0),
+      );
+
+      final report = repository.getMonthlyReport(2026, 11);
+      final s = report.summary;
+
+      expect(s.totalIncome, 8000000);
+      expect(s.totalExpense, 2000000);
+      expect(s.netCashFlow, 6000000);
+      expect(s.incomeCount, 2);
+      expect(s.expenseCount, 2);
+      expect(s.averageExpense, 1000000.0);
+      expect(s.savingRatePercent, closeTo(75.0, 0.001));
+      expect(s.incomeToExpenseRatio, closeTo(4.0, 0.001));
+
+      // Income categories ('salary', 'bonus') must never appear in expense breakdown
+      expect(s.categoryBreakdown.keys.toList(), ['food', 'bills']);
+      expect(s.categoryBreakdown['food'], 1500000);
+      expect(s.categoryBreakdown['bills'], 500000);
+      expect(s.categoryItems.length, 2);
+      expect(s.categoryItems[0].categoryId, 'food');
+      expect(s.categoryItems[0].percentage, closeTo(75.0, 0.001));
+      expect(s.categoryItems[1].categoryId, 'bills');
+      expect(s.categoryItems[1].percentage, closeTo(25.0, 0.001));
+      expect(s.topExpenseCategory?.categoryId, 'food');
+      expect(report.trend.length, 4);
+      expect(report.trend.fold<int>(0, (sum, p) => sum + p.expense), 2000000);
+    });
+
+    test('4. Quarterly aggregation (Q1-Q4) and cross-year navigation', () async {
+      // Q4 2025 boundary + Q1 2026 (Jan, Feb, Mar) + Q2 2026 boundary
+      await seedTx(
+        id: 'q4_dec',
+        title: 'Belanja Des 2025',
+        amount: 400000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        date: DateTime(2025, 12, 31, 23, 59, 59),
+      );
+      await seedTx(
+        id: 'q1_jan_inc',
+        title: 'Gaji Jan',
+        amount: 5000000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        date: DateTime(2026, 1, 1, 0, 0, 0),
+      );
+      await seedTx(
+        id: 'q1_jan_exp',
+        title: 'Makan Jan',
+        amount: 1000000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2026, 1, 20),
+      );
+      // February 2026 intentionally empty (0 tx)
+      await seedTx(
+        id: 'q1_mar_inc',
+        title: 'Bonus Mar',
+        amount: 2000000,
+        type: TransactionType.income,
+        categoryId: 'bonus',
+        date: DateTime(2026, 3, 10),
+      );
+      await seedTx(
+        id: 'q1_mar_exp',
+        title: 'Transport Mar',
+        amount: 2500000,
+        type: TransactionType.expense,
+        categoryId: 'transport',
+        date: DateTime(2026, 3, 31, 23, 59, 59),
+      );
+      await seedTx(
+        id: 'q2_apr_exp',
+        title: 'Belanja Apr',
+        amount: 900000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        date: DateTime(2026, 4, 1, 0, 0, 0),
+      );
+
+      final q1 = repository.getQuarterlyReport(2026, 1);
+      expect(q1.summary.totalIncome, 7000000);
+      expect(q1.summary.totalExpense, 3500000);
+      expect(q1.summary.netCashFlow, 3500000);
+      expect(q1.monthlyTrend.length, 3);
+      expect(q1.monthlyTrend.map((m) => m.label).toList(), ['Jan', 'Feb', 'Mar']);
+      expect(q1.monthlyTrend[0].income, 5000000);
+      expect(q1.monthlyTrend[0].expense, 1000000);
+      expect(q1.monthlyTrend[1].income, 0);
+      expect(q1.monthlyTrend[1].expense, 0);
+      expect(q1.monthlyTrend[2].income, 2000000);
+      expect(q1.monthlyTrend[2].expense, 2500000);
+      expect(q1.highestSpendingMonth?.label, 'Mar');
+      expect(q1.comparison.previousSummary.totalExpense, 400000);
+
+      final q2 = repository.getQuarterlyReport(2026, 2);
+      expect(q2.summary.totalExpense, 900000);
+
+      expect(FinanceRepository.stepQuarter(2026, 1, -1), (year: 2025, quarter: 4));
+      expect(FinanceRepository.stepQuarter(2025, 4, 1), (year: 2026, quarter: 1));
+    });
+
+    test('5 & 6. Yearly aggregation produces all 12 months including zero months and accurate high/low months', () async {
+      await seedTx(
+        id: 'y_jan_inc',
+        title: 'Gaji Jan',
+        amount: 12000000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        date: DateTime(2026, 1, 5),
+      );
+      await seedTx(
+        id: 'y_feb_exp',
+        title: 'Transport Feb',
+        amount: 300000,
+        type: TransactionType.expense,
+        categoryId: 'transport',
+        date: DateTime(2026, 2, 14),
+      );
+      await seedTx(
+        id: 'y_agu_exp',
+        title: 'Kesehatan Agu',
+        amount: 2400000,
+        type: TransactionType.expense,
+        categoryId: 'health',
+        date: DateTime(2026, 8, 17),
+      );
+      await seedTx(
+        id: 'y_nov_exp',
+        title: 'Belanja Nov',
+        amount: 900000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        date: DateTime(2026, 11, 25),
+      );
+
+      final yearly = repository.getYearlyReport(2026);
+      expect(yearly.summary.totalIncome, 12000000);
+      expect(yearly.summary.totalExpense, 3600000);
+      expect(yearly.summary.netCashFlow, 8400000);
+      expect(yearly.averageMonthlyExpense, 300000.0);
+      expect(yearly.monthlyTrend.length, 12);
+      expect(
+        yearly.monthlyTrend.map((m) => m.label).toList(),
+        ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'],
+      );
+      expect(yearly.monthlyTrend[0].income, 12000000);
+      expect(yearly.monthlyTrend[0].expense, 0);
+      expect(yearly.monthlyTrend[1].expense, 300000);
+      expect(yearly.monthlyTrend[7].expense, 2400000);
+      expect(yearly.monthlyTrend[10].expense, 900000);
+      expect(yearly.monthlyTrend[11].expense, 0);
+
+      expect(yearly.highestSpendingMonth?.label, 'Agu');
+      expect(yearly.highestSpendingMonth?.expense, 2400000);
+      expect(yearly.lowestSpendingMonth?.label, 'Feb');
+      expect(yearly.lowestSpendingMonth?.expense, 300000);
+    });
+
+    test('7 & 8. Custom date range validation, inclusive end-date, and trend grouping', () async {
+      // Invalid inverted range throws ArgumentError and returns validation message
+      expect(
+        FinanceRepository.validateCustomDateRange(
+          DateTime(2026, 11, 15),
+          DateTime(2026, 11, 10),
+        ),
+        isNotNull,
+      );
+      expect(
+        () => repository.getReportSummary(
+          startDate: DateTime(2026, 11, 15),
+          endDate: DateTime(2026, 11, 10),
+        ),
+        throwsArgumentError,
+      );
+
+      // Same-day range valid even with non-midnight time components
+      expect(
+        FinanceRepository.validateCustomDateRange(
+          DateTime(2026, 11, 10, 20, 0),
+          DateTime(2026, 11, 10, 8, 0),
+        ),
+        isNull,
+      );
+
+      await seedTx(
+        id: 'c_before',
+        title: 'Sebelum Start',
+        amount: 50000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2026, 10, 31, 23, 59, 59),
+      );
+      await seedTx(
+        id: 'c_start',
+        title: 'Tepat Start',
+        amount: 100000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2026, 11, 1, 0, 0, 0),
+      );
+      await seedTx(
+        id: 'c_end',
+        title: 'Akhir Hari End',
+        amount: 250000,
+        type: TransactionType.income,
+        categoryId: 'bonus',
+        date: DateTime(2026, 11, 5, 23, 59, 59),
+      );
+      await seedTx(
+        id: 'c_after',
+        title: 'Hari Setelah End',
+        amount: 999000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        date: DateTime(2026, 11, 6, 0, 0, 0),
+      );
+
+      final start = DateTime(2026, 11, 1);
+      final end = DateTime(2026, 11, 5);
+      final summary = repository.getReportSummary(startDate: start, endDate: end);
+      expect(summary.dayCount, 5);
+      expect(summary.totalIncome, 250000);
+      expect(summary.totalExpense, 100000);
+      expect(summary.netCashFlow, 150000);
+
+      final dailyTrend = repository.getIncomeExpenseTrend(
+        startDate: start,
+        endDate: end,
+        granularity: ReportPeriod.custom,
+      );
+      expect(dailyTrend.length, 5);
+      expect(dailyTrend.first.expense, 100000);
+      expect(dailyTrend.last.income, 250000);
+
+      // Multi-month custom (> 92 days) uses monthly buckets clamped cleanly
+      final longTrend = repository.getIncomeExpenseTrend(
+        startDate: DateTime(2026, 8, 15),
+        endDate: DateTime(2026, 11, 20),
+        granularity: ReportPeriod.custom,
+      );
+      expect(longTrend.length, 4);
+      expect(longTrend.first.startDate, DateTime(2026, 8, 15));
+      expect(longTrend.last.endDate, DateTime(2026, 11, 20));
+    });
+
+    test('11 & 12. Empty-period and zero-expense periods produce null/safe metrics with no NaN or Infinity', () async {
+      // Completely empty month
+      final emptyReport = repository.getMonthlyReport(2026, 6);
+      expect(emptyReport.summary.hasAnyTransactions, isFalse);
+      expect(emptyReport.summary.totalIncome, 0);
+      expect(emptyReport.summary.totalExpense, 0);
+      expect(emptyReport.summary.netCashFlow, 0);
+      expect(emptyReport.summary.averageExpense, isNull);
+      expect(emptyReport.summary.incomeToExpenseRatio, isNull);
+      expect(emptyReport.summary.savingRatePercent, isNull);
+      expect(emptyReport.summary.categoryItems, isEmpty);
+      expect(emptyReport.comparison.expenseChangePercent, isNull);
+
+      // Year with 0 transactions still returns 12 zeroed months and null high/low
+      final emptyYear = repository.getYearlyReport(2026);
+      expect(emptyYear.monthlyTrend.length, 12);
+      expect(emptyYear.highestSpendingMonth, isNull);
+      expect(emptyYear.lowestSpendingMonth, isNull);
+
+      // Income-only month (zero expense): no divide-by-zero NaN/Infinity
+      await seedTx(
+        id: 'inc_only',
+        title: 'Gaji Saja',
+        amount: 4500000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        date: DateTime(2026, 7, 10),
+      );
+      final incomeOnly = repository.getMonthlyReport(2026, 7);
+      expect(incomeOnly.summary.totalIncome, 4500000);
+      expect(incomeOnly.summary.totalExpense, 0);
+      expect(incomeOnly.summary.netCashFlow, 4500000);
+      expect(incomeOnly.summary.averageExpense, isNull);
+      expect(incomeOnly.summary.incomeToExpenseRatio, isNull);
+      expect(incomeOnly.summary.savingRatePercent, closeTo(100.0, 0.001));
+      expect(incomeOnly.summary.savingRatePercent!.isFinite, isTrue);
+      expect(incomeOnly.summary.categoryItems, isEmpty);
+    });
+
+    test('13. Wallet filtering and getWalletPortfolios reflect actual SQLite balances per wallet', () async {
+      await seedTx(
+        id: 'w_main_inc',
+        title: 'Kas Tunai',
+        amount: 1000000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        walletId: 'main_wallet',
+        date: DateTime(2026, 11, 2),
+      );
+      await seedTx(
+        id: 'w_main_exp',
+        title: 'Makan Tunai',
+        amount: 200000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        date: DateTime(2026, 11, 3),
+      );
+      await seedTx(
+        id: 'w_bca_inc',
+        title: 'Transfer BCA',
+        amount: 5000000,
+        type: TransactionType.income,
+        categoryId: 'business',
+        walletId: 'bank_bca',
+        date: DateTime(2026, 11, 4),
+      );
+      await seedTx(
+        id: 'w_ewallet_exp',
+        title: 'Topup & Belanja OVO',
+        amount: 150000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        walletId: 'ewallet',
+        date: DateTime(2026, 11, 5),
+      );
+
+      final allNov = repository.getMonthlyReport(2026, 11, walletId: 'all');
+      expect(allNov.summary.totalIncome, 6000000);
+      expect(allNov.summary.totalExpense, 350000);
+
+      final bcaNov = repository.getMonthlyReport(2026, 11, walletId: 'bank_bca');
+      expect(bcaNov.summary.totalIncome, 5000000);
+      expect(bcaNov.summary.totalExpense, 0);
+      expect(bcaNov.summary.categoryItems, isEmpty);
+
+      final ewalletNov = repository.getMonthlyReport(2026, 11, walletId: 'ewallet');
+      expect(ewalletNov.summary.totalIncome, 0);
+      expect(ewalletNov.summary.totalExpense, 150000);
+      expect(ewalletNov.summary.netCashFlow, -150000);
+      expect(ewalletNov.summary.categoryItems.single.categoryId, 'shopping');
+
+      final portfolios = repository.getWalletPortfolios(
+        startDate: DateTime(2026, 11, 1),
+        endDate: DateTime(2026, 11, 30),
+      );
+      expect(portfolios.totalBalance, 5650000);
+      expect(portfolios.wallets.length, 3);
+      expect(
+        portfolios.wallets.firstWhere((w) => w.wallet.id == 'main_wallet').currentBalance,
+        800000,
+      );
+      expect(
+        portfolios.wallets.firstWhere((w) => w.wallet.id == 'bank_bca').currentBalance,
+        5000000,
+      );
+      expect(
+        portfolios.wallets.firstWhere((w) => w.wallet.id == 'ewallet').currentBalance,
+        -150000,
+      );
+    });
+
+    test('14 & 15. Previous period comparison and Feb 29 leap-year handling', () async {
+      // Feb 29, 2024 at 23:59:59 vs Feb 28, 2024 vs Mar 1, 2024
+      await seedTx(
+        id: 'leap_feb28',
+        title: 'Makan Feb 28',
+        amount: 100000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2024, 2, 28, 12, 0),
+      );
+      await seedTx(
+        id: 'leap_feb29',
+        title: 'Tagihan Kabisat Feb 29',
+        amount: 300000,
+        type: TransactionType.expense,
+        categoryId: 'bills',
+        date: DateTime(2024, 2, 29, 23, 59, 59),
+      );
+      await seedTx(
+        id: 'leap_mar1',
+        title: 'Makan Maret 1',
+        amount: 200000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        date: DateTime(2024, 3, 1, 0, 0, 0),
+      );
+
+      final feb2024 = repository.getMonthlyReport(2024, 2);
+      expect(feb2024.summary.dayCount, 29);
+      expect(feb2024.summary.totalExpense, 400000);
+      expect(feb2024.summary.expenseCount, 2);
+
+      // March 2024 previous period comparison must compare against all of Feb 2024 (400rb)
+      final marComparison = repository.getPreviousPeriodComparison(
+        startDate: DateTime(2024, 3, 1),
+        endDate: DateTime(2024, 3, 31),
+        periodType: ReportPeriod.month,
+      );
+      expect(marComparison.previousStartDate, DateTime(2024, 2, 1));
+      expect(marComparison.previousEndDate, DateTime(2024, 2, 29));
+      expect(marComparison.previousSummary.totalExpense, 400000);
+      expect(marComparison.currentSummary.totalExpense, 200000);
+      expect(marComparison.expenseDelta, -200000);
+      expect(marComparison.expenseChangePercent, closeTo(-50.0, 0.001));
+
+      // Custom 1-day range on 2024-02-29 compares against 2024-02-28
+      final customLeapComparison = repository.getPreviousPeriodComparison(
+        startDate: DateTime(2024, 2, 29),
+        endDate: DateTime(2024, 2, 29),
+        periodType: ReportPeriod.custom,
+      );
+      expect(customLeapComparison.previousStartDate, DateTime(2024, 2, 28));
+      expect(customLeapComparison.previousEndDate, DateTime(2024, 2, 28));
+      expect(customLeapComparison.currentSummary.totalExpense, 300000);
+      expect(customLeapComparison.previousSummary.totalExpense, 100000);
+      expect(customLeapComparison.expenseDelta, 200000);
+      expect(customLeapComparison.expenseChangePercent, closeTo(200.0, 0.001));
+
+      // Leap Q1 2024 ends March 31 and includes Feb 29 + Mar 1
+      final q1Leap = repository.getQuarterlyReport(2024, 1);
+      expect(q1Leap.summary.totalExpense, 600000);
+      expect(q1Leap.monthlyTrend[1].endDate, DateTime(2024, 2, 29));
+      expect(q1Leap.monthlyTrend[1].expense, 400000);
+
+      // Non-leap Feb 2025 ends Feb 28
+      expect(
+        FinanceRepository.getMonthDateRange(2025, 2),
+        (start: DateTime(2025, 2, 1), end: DateTime(2025, 2, 28)),
+      );
+    });
+  });
 }

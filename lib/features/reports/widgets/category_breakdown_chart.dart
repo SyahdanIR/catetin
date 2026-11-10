@@ -4,25 +4,53 @@ import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../data/models/category_model.dart';
+import '../../../data/models/report_models.dart';
+import '../../../shared/widgets/meemo_mascot.dart';
 
 class CategoryBreakdownChart extends StatelessWidget {
   final Map<String, num> breakdown;
   final num totalExpense;
+  final List<CategoryBreakdownItem>? items;
   final CategoryModel Function(String id)? categoryResolver;
 
   const CategoryBreakdownChart({
     super.key,
     required this.breakdown,
     required this.totalExpense,
+    this.items,
     this.categoryResolver,
   });
 
   @override
   Widget build(BuildContext context) {
     final resolveCategory = categoryResolver ?? CategoryModel.getById;
-    if (breakdown.isEmpty || totalExpense <= 0) {
+    final List<CategoryBreakdownItem> resolvedItems;
+
+    if (items != null) {
+      resolvedItems = items!.where((item) => item.amount > 0).toList();
+    } else if (totalExpense > 0 && breakdown.isNotEmpty) {
+      final sortedEntries = breakdown.entries
+          .where((e) => e.value > 0)
+          .toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      resolvedItems = sortedEntries.map((entry) {
+        final amount = entry.value.round();
+        return CategoryBreakdownItem(
+          categoryId: entry.key,
+          category: resolveCategory(entry.key),
+          amount: amount,
+          percentage: (amount / totalExpense) * 100,
+          transactionCount: 0,
+        );
+      }).toList();
+    } else {
+      resolvedItems = const [];
+    }
+
+    if (resolvedItems.isEmpty || totalExpense <= 0) {
       return Container(
-        padding: const EdgeInsets.all(16),
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
@@ -32,17 +60,32 @@ class CategoryBreakdownChart extends StatelessWidget {
           ),
           boxShadow: AppShadows.tactileSmall,
         ),
-        child: Center(
-          child: Text(
-            'Belum ada pengeluaran pada periode ini',
-            style: AppTypography.bodySmall,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const MeemoMascot(
+              size: 40,
+              mood: MeemoMood.thinking,
+              showShadow: false,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Belum ada pengeluaran pada periode ini',
+              style: AppTypography.labelMedium.copyWith(
+                color: AppColors.inkLight,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Catat pengeluaran untuk melihat pembagian belanja per kategori.',
+              style: AppTypography.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
-
-    final sortedEntries = breakdown.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -59,14 +102,15 @@ class CategoryBreakdownChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Alokasi Pengeluaran',
-                style: AppTypography.headingSmall,
+              Expanded(
+                child: Text(
+                  'Alokasi Pengeluaran',
+                  style: AppTypography.headingSmall,
+                ),
               ),
               Text(
-                '${sortedEntries.length} Kategori',
+                '${resolvedItems.length} Kategori',
                 style: AppTypography.labelSmall,
               ),
             ],
@@ -84,12 +128,11 @@ class CategoryBreakdownChart extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(AppBorders.radiusSmall - 1),
               child: Row(
-                children: sortedEntries.map((entry) {
-                  final category = resolveCategory(entry.key);
-                  final flex = ((entry.value / totalExpense) * 1000).toInt();
+                children: resolvedItems.map((item) {
+                  final flex = ((item.amount / totalExpense) * 1000).round();
                   return Expanded(
                     flex: flex > 0 ? flex : 1,
-                    child: Container(color: category.color),
+                    child: Container(color: item.category.color),
                   );
                 }).toList(),
               ),
@@ -102,45 +145,71 @@ class CategoryBreakdownChart extends StatelessWidget {
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: sortedEntries.length,
+            itemCount: resolvedItems.length,
             separatorBuilder: (_, _) => const Divider(
               color: AppColors.borderLight,
               height: 14,
             ),
             itemBuilder: (context, i) {
-              final entry = sortedEntries[i];
-              final category = resolveCategory(entry.key);
-              final percentage = (entry.value / totalExpense) * 100;
-
+              final item = resolvedItems[i];
               return Row(
                 children: [
                   Container(
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: category.color,
+                      color: item.category.color,
                       shape: BoxShape.circle,
                       border: Border.all(color: AppColors.border, width: 1),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      category.name,
-                      style: AppTypography.labelMedium,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.category.name,
+                          style: AppTypography.labelMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (item.transactionCount > 0)
+                          Text(
+                            '${item.transactionCount} transaksi · ${item.percentage.toStringAsFixed(1)}%',
+                            style: AppTypography.labelSmall.copyWith(
+                              color: AppColors.inkMuted,
+                              fontSize: 10.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        else
+                          Text(
+                            '${item.percentage.toStringAsFixed(1)}% dari total pengeluaran',
+                            style: AppTypography.labelSmall.copyWith(
+                              color: AppColors.inkMuted,
+                              fontSize: 10.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
                   ),
-                  Text(
-                    '${percentage.toStringAsFixed(1)}%',
-                    style: AppTypography.labelSmall.copyWith(
-                      color: AppColors.inkMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    CurrencyFormatter.format(entry.value),
-                    style: AppTypography.labelMedium.copyWith(
-                      fontWeight: FontWeight.w700,
+                  const SizedBox(width: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 120),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        CurrencyFormatter.format(item.amount),
+                        style: AppTypography.labelMedium.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                      ),
                     ),
                   ),
                 ],

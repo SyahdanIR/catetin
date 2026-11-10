@@ -1,6 +1,7 @@
 import 'package:catetin/core/theme/app_colors.dart';
 import 'package:catetin/core/theme/app_shadows.dart';
 import 'package:catetin/core/theme/app_theme.dart';
+import 'package:catetin/core/utils/date_formatter.dart';
 import 'package:catetin/data/database/app_database.dart';
 import 'package:catetin/data/models/transaction_model.dart';
 import 'package:catetin/data/repositories/finance_repository.dart';
@@ -9,6 +10,10 @@ import 'package:catetin/features/dashboard/widgets/balance_hero_card.dart';
 import 'package:catetin/features/dashboard/widgets/expense_pie_chart_card.dart';
 import 'package:catetin/features/dashboard/widgets/recent_transactions_section.dart';
 import 'package:catetin/features/receipt_scanner/screens/receipt_scanner_screen.dart';
+import 'package:catetin/features/reports/screens/reports_screen.dart';
+import 'package:catetin/features/reports/widgets/cashflow_summary_cards.dart';
+import 'package:catetin/features/reports/widgets/category_breakdown_chart.dart';
+import 'package:catetin/features/reports/widgets/income_expense_chart.dart';
 import 'package:catetin/features/transactions/screens/add_transaction_screen.dart';
 import 'package:catetin/features/transactions/screens/transactions_history_screen.dart';
 import 'package:catetin/features/transactions/widgets/transaction_filter_bar.dart';
@@ -17,6 +22,7 @@ import 'package:catetin/main.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FailingWriteAppDatabase extends AppDatabase {
@@ -61,6 +67,12 @@ void main() {
     expect(find.text('Report'), findsOneWidget);
     expect(find.text('Rp 0'), findsOneWidget);
     expect(find.text('Belum Ada Transaksi'), findsOneWidget);
+
+    await tester.tap(find.text('Report'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Laporan Finansial'), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
     await database.close();
   });
@@ -660,6 +672,252 @@ void main() {
 
     expect(find.text('Transaksi berhasil dihapus'), findsOneWidget);
     expect(repository.transactions.length, 1);
+    expect(tester.takeException(), isNull);
+
+    await database.close();
+  });
+
+  testWidgets(
+      'ReportsScreen Monthly, Quarterly, Yearly views render real SQLite data, update across wallets, and replace fake portfolio/export placeholders on 360px screen',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final database = AppDatabase(NativeDatabase.memory());
+    final repository = FinanceRepository(database: database);
+    await repository.init();
+
+    final now = DateTime.now();
+    final currentMonthStart = DateTime(now.year, now.month, 2, 10, 0);
+    final prevMonthDate = FinanceRepository.stepMonth(now, -1);
+    final earlierThisYearMonth =
+        now.month > 1 ? DateTime(now.year, 1, 12, 10, 0) : DateTime(now.year, 2, 3, 9, 0);
+
+    await repository.addTransaction(TransactionModel(
+      id: 'rep_cur_inc',
+      title: 'Gaji Bulan Berjalan',
+      amount: 8000000,
+      type: TransactionType.income,
+      categoryId: 'salary',
+      walletId: 'main_wallet',
+      transactionDate: currentMonthStart,
+      createdAt: currentMonthStart,
+      updatedAt: currentMonthStart,
+    ));
+    await repository.addTransaction(TransactionModel(
+      id: 'rep_cur_exp_food',
+      title: 'Belanja Dapur',
+      amount: 1500000,
+      type: TransactionType.expense,
+      categoryId: 'food',
+      walletId: 'main_wallet',
+      transactionDate: currentMonthStart,
+      createdAt: currentMonthStart,
+      updatedAt: currentMonthStart,
+    ));
+    await repository.addTransaction(TransactionModel(
+      id: 'rep_cur_exp_bca',
+      title: 'Cicilan BCA',
+      amount: 500000,
+      type: TransactionType.expense,
+      categoryId: 'bills',
+      walletId: 'bank_bca',
+      transactionDate: currentMonthStart,
+      createdAt: currentMonthStart,
+      updatedAt: currentMonthStart,
+    ));
+    await repository.addTransaction(TransactionModel(
+      id: 'rep_prev_exp',
+      title: 'Transport Bulan Lalu',
+      amount: 400000,
+      type: TransactionType.expense,
+      categoryId: 'transport',
+      walletId: 'ewallet',
+      transactionDate: DateTime(prevMonthDate.year, prevMonthDate.month, 10, 11, 0),
+      createdAt: now,
+      updatedAt: now,
+    ));
+    await repository.addTransaction(TransactionModel(
+      id: 'rep_jan_exp',
+      title: 'Belanja Awal Tahun',
+      amount: 250000,
+      type: TransactionType.expense,
+      categoryId: 'shopping',
+      walletId: 'bank_bca',
+      transactionDate: earlierThisYearMonth,
+      createdAt: now,
+      updatedAt: now,
+    ));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ReportsScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Default Monthly view matches current month
+    expect(find.text(AppDateFormatter.formatMonthYear(now)), findsOneWidget);
+    expect(find.byType(CashflowSummaryCards), findsOneWidget);
+    expect(find.byType(IncomeExpenseChart), findsOneWidget);
+    expect(find.byType(CategoryBreakdownChart), findsOneWidget);
+    expect(find.text('1 transaksi'), findsNWidgets(1)); // 1 income tx
+    expect(find.text('2 transaksi'), findsNWidgets(1)); // 2 expense tx
+    expect(find.text('Makanan & Minuman'), findsWidgets);
+    expect(find.text('Tagihan'), findsWidgets);
+    expect(find.textContaining('NaN'), findsNothing);
+    expect(find.textContaining('Infinity'), findsNothing);
+    expect(find.textContaining('13.082.900'), findsNothing);
+    expect(find.textContaining('25.400.000'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // Export button opens honest Coming Soon dialog (closable via button & Escape)
+    await tester.tap(find.text('Ekspor'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ekspor Laporan (Segera Hadir)'), findsOneWidget);
+    expect(find.textContaining('berhasil diekspor'), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('Ekspor Laporan (Segera Hadir)'), findsNothing);
+
+    // Keyboard Tab focuses interactive controls and opens Export dialog via Enter
+    await tester.tap(find.text('Ekspor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mengerti'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Step backward to previous month and forward back to current month
+    await tester.tap(find.byTooltip('Bulan Sebelumnya'));
+    await tester.pumpAndSettle();
+    expect(find.text(AppDateFormatter.formatMonthYear(prevMonthDate)), findsOneWidget);
+    expect(find.text('Transportasi'), findsWidgets);
+    await tester.tap(find.byTooltip('Bulan Berikutnya'));
+    await tester.pumpAndSettle();
+    expect(find.text(AppDateFormatter.formatMonthYear(now)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Switch to Quarterly tab and verify 3-month comparison renders cleanly
+    await tester.tap(find.text('Kuartal'));
+    await tester.pumpAndSettle();
+    final curQuarter = AppDateFormatter.quarterForMonth(now.month);
+    expect(find.text('Rincian Per Bulan di Q$curQuarter ${now.year}'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Switch to Yearly tab and verify 12 months chart labels, bar interaction & stats
+    await tester.tap(find.text('Tahun'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tahun ${now.year}'), findsOneWidget);
+    expect(find.text('Bulan Pengeluaran Tertinggi'), findsOneWidget);
+    expect(find.text('Bulan Pengeluaran Terendah'), findsOneWidget);
+    expect(find.text('Des'), findsOneWidget);
+    await tester.ensureVisible(find.byType(IncomeExpenseChart));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Des'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Des'));
+    await tester.pumpAndSettle();
+    expect(find.text('Desember ${now.year}'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Filter wallet to Rekening Bank via ReportsScreen wallet pill
+    await tester.ensureVisible(find.text('Dompet: Semua Dompet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dompet: Semua Dompet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rekening Bank'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dompet: Rekening Bank'), findsOneWidget);
+    expect(find.text('0 transaksi'), findsOneWidget); // 0 income in bank_bca
+    expect(tester.takeException(), isNull);
+
+    // Check Kekayaan & Dompet displays real wallet balances
+    await tester.ensureVisible(find.text('Kekayaan & Dompet'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kekayaan & Dompet'));
+    await tester.pumpAndSettle();
+    expect(find.text('Distribusi Saldo Dompet'), findsOneWidget);
+    expect(find.text('Rp 6.500.000'), findsOneWidget); // main_wallet: 8jt - 1.5jt
+    expect(find.text('-Rp 750.000'), findsOneWidget); // bank_bca: -500rb - 250rb
+    expect(find.text('-Rp 400.000'), findsOneWidget); // ewallet: -400rb
+    expect(find.text('Rp 5.350.000'), findsOneWidget); // total across 3 SQLite wallets
+
+    expect(tester.takeException(), isNull);
+    await database.close();
+  });
+
+  testWidgets(
+      'ReportsScreen Custom date range validates start <= end, handles future dates, and displays zero-expense empty breakdown safely',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final database = AppDatabase(NativeDatabase.memory());
+    final repository = FinanceRepository(database: database);
+    await repository.init();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: ReportsScreen(repository: repository),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Empty month shows clean neutral states with zero NaN/Infinity
+    expect(find.text('Belum ada arus kas pada periode ini'), findsOneWidget);
+    expect(find.text('Belum ada pengeluaran pada periode ini'), findsOneWidget);
+    expect(find.textContaining('NaN'), findsNothing);
+
+    // Switch to Custom tab and attempt selecting End Date before Start Date (1st of month -> prev month)
+    await tester.tap(find.text('Kustom'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mulai'), findsOneWidget);
+    expect(find.text('Akhir'), findsOneWidget);
+
+    await tester.tap(find.text('Akhir'));
+    await tester.pumpAndSettle();
+    // Step back to previous month and select day 1 (guaranteed earlier than current month 1st)
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('1'),
+      ).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Tanggal mulai tidak boleh setelah tanggal akhir.'),
+      findsWidgets,
+    );
+
+    // Pick a valid future End Date (Next month) -> displays future range banner safely
+    await tester.tap(find.text('Akhir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('15'),
+      ).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('tanggal mendatang'), findsOneWidget);
+
     expect(tester.takeException(), isNull);
 
     await database.close();

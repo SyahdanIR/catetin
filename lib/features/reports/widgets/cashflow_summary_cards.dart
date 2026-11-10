@@ -21,6 +21,7 @@ class CashflowSummaryCards extends StatelessWidget {
   Widget build(BuildContext context) {
     final net =
         netBalance ?? FinanceRepository.calculateNetAmount(income, expense);
+    final isDeficit = net < 0;
 
     return Column(
       children: [
@@ -50,13 +51,17 @@ class CashflowSummaryCards extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // Net Card
+            // Net Cash Flow Card
             Expanded(
               child: _buildMetricCard(
                 title: 'Selisih Net',
                 amount: net,
-                bgColor: AppColors.highlightLight,
-                textColor: AppColors.highlightText,
+                bgColor: isDeficit
+                    ? AppColors.expenseLight
+                    : AppColors.highlightLight,
+                textColor: isDeficit
+                    ? AppColors.expenseDark
+                    : AppColors.highlightText,
                 icon: Icons.account_balance_wallet_rounded,
               ),
             ),
@@ -66,7 +71,7 @@ class CashflowSummaryCards extends StatelessWidget {
         Text(
           'Selisih Bersih = Total Pemasukan - Total Pengeluaran',
           style: AppTypography.labelSmall.copyWith(
-            color: AppColors.inkMuted,
+            color: AppColors.inkLight,
             fontSize: 10,
           ),
           textAlign: TextAlign.center,
@@ -77,53 +82,62 @@ class CashflowSummaryCards extends StatelessWidget {
 
   Widget _buildMetricCard({
     required String title,
-    required num amount,
+    required int amount,
     required Color bgColor,
     required Color textColor,
     required IconData icon,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
-        border: Border.all(
-          color: AppColors.border,
-          width: AppBorders.borderWidth,
+    return Tooltip(
+      message: '$title: ${CurrencyFormatter.format(amount)}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
+          border: Border.all(
+            color: AppColors.border,
+            width: AppBorders.borderWidth,
+          ),
+          boxShadow: AppShadows.tactileSmall,
         ),
-        boxShadow: AppShadows.tactileSmall,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: textColor),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTypography.labelSmall.copyWith(
-                    color: textColor,
-                    fontSize: 11,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 14, color: textColor),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: AppTypography.labelSmall.copyWith(
+                      color: textColor,
+                      fontSize: 11,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  CurrencyFormatter.formatCompact(amount),
+                  style: AppTypography.headingSmall.copyWith(
+                    color: textColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                  maxLines: 1,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            CurrencyFormatter.formatCompact(amount),
-            style: AppTypography.headingSmall.copyWith(
-              color: textColor,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
