@@ -113,9 +113,9 @@ class TransactionTile extends StatelessWidget {
               // Amount
               Text(
                 CurrencyFormatter.format(
-                  transaction.amount,
+                  isIncome ? transaction.amount : -transaction.amount,
                   withSign: true,
-                ).replaceFirst(isIncome ? '+' : '-', isIncome ? '+ ' : '- '),
+                ),
                 style: (isIncome
                         ? AppTypography.moneyIncome
                         : AppTypography.moneyExpense)

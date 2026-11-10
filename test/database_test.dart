@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dompetku/data/database/app_database.dart';
-import 'package:dompetku/data/models/category_model.dart';
-import 'package:dompetku/data/models/transaction_model.dart';
-import 'package:dompetku/data/repositories/finance_repository.dart';
+import 'package:catetin/data/database/app_database.dart';
+import 'package:catetin/data/models/category_model.dart';
+import 'package:catetin/data/models/transaction_model.dart';
+import 'package:catetin/data/repositories/finance_repository.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
@@ -414,8 +414,8 @@ void main() {
 
     // 12. Verify persistence after closing and reopening a file-backed database using a temporary file
     test('12. Verify persistence across closing and reopening file-backed database', () async {
-      final tempDir = Directory.systemTemp.createTempSync('dompetku_persist_test_');
-      final dbFile = File(p.join(tempDir.path, 'persisted_dompetku.sqlite'));
+      final tempDir = Directory.systemTemp.createTempSync('catetin_persist_test_');
+      final dbFile = File(p.join(tempDir.path, 'persisted_catetin.sqlite'));
 
       try {
         // Step 1: Open database, initialize repository, write transaction
@@ -461,6 +461,99 @@ void main() {
           tempDir.deleteSync(recursive: true);
         }
       }
+    });
+
+    test('13. Verify Monday-Sunday weekly category expense breakdown and wallet filter', () async {
+      final currentList = List<TransactionModel>.from(repository.transactions);
+      for (final tx in currentList) {
+        await repository.deleteTransaction(tx.id);
+      }
+
+      // Sunday 1 Nov 2026 belongs to Monday 26 Oct 2026 .. Sunday 1 Nov 2026
+      final refSunday = DateTime(2026, 11, 1);
+      final weekRange = FinanceRepository.weekRangeFor(refSunday);
+      expect(weekRange.start, DateTime(2026, 10, 26));
+      expect(weekRange.end, DateTime(2026, 11, 1));
+
+      await repository.addTransaction(TransactionModel(
+        id: 'w_in_1',
+        title: 'Kopi Senin',
+        amount: 35000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 10, 26, 9, 0),
+        createdAt: refSunday,
+        updatedAt: refSunday,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'w_in_2',
+        title: 'Makan Minggu',
+        amount: 65000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 11, 1, 19, 0),
+        createdAt: refSunday,
+        updatedAt: refSunday,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'w_in_3',
+        title: 'Bensin Bank BCA',
+        amount: 100000,
+        type: TransactionType.expense,
+        categoryId: 'transport',
+        walletId: 'bank_bca',
+        transactionDate: DateTime(2026, 10, 29, 12, 0),
+        createdAt: refSunday,
+        updatedAt: refSunday,
+      ));
+      // Outside week (previous Sunday 25 Oct 2026)
+      await repository.addTransaction(TransactionModel(
+        id: 'w_out_1',
+        title: 'Belanja Minggu Lalu',
+        amount: 200000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 10, 25, 20, 0),
+        createdAt: refSunday,
+        updatedAt: refSunday,
+      ));
+      // Income inside week should be excluded from expense breakdown
+      await repository.addTransaction(TransactionModel(
+        id: 'w_inc_1',
+        title: 'Bonus',
+        amount: 500000,
+        type: TransactionType.income,
+        categoryId: 'bonus',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 10, 30, 10, 0),
+        createdAt: refSunday,
+        updatedAt: refSunday,
+      ));
+
+      final allWalletsWeekly =
+          repository.getWeeklyCategoryExpenseBreakdown(refSunday, walletId: 'all');
+      expect(allWalletsWeekly, {'food': 100000, 'transport': 100000});
+
+      final mainWalletWeekly = repository.getWeeklyCategoryExpenseBreakdown(
+        refSunday,
+        walletId: 'main_wallet',
+      );
+      expect(mainWalletWeekly, {'food': 100000});
+
+      final allTimeMain = repository.getAllTimeCategoryExpenseBreakdown(
+        walletId: 'main_wallet',
+      );
+      expect(allTimeMain, {'food': 100000, 'shopping': 200000});
+
+      final recent3Main = repository.getRecentTransactions(
+        limit: 3,
+        walletId: 'main_wallet',
+      );
+      expect(recent3Main.length, 3);
+      expect(recent3Main.every((tx) => tx.walletId == 'main_wallet'), isTrue);
     });
   });
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
-/// Centralized typography system for Dompetku.
+/// Centralized typography system for Catetin.
 ///
 /// Clear numerical hierarchy for Indonesian Rupiah amounts and legible text styles.
 class AppTypography {

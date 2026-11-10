@@ -12,9 +12,9 @@ If the mode is unresolved, ask during/after and end the response; wait for the a
 To update antislop later: `npx antislop-ai --update`, or run `npx antislop-ai` and pick Overwrite them.
 <!-- antislop:end -->
 
-# DOMPETKU — PROJECT CONSTITUTION
+# CATETIN - PROJECT CONSTITUTION
 
-This document defines the permanent product vision, technical direction, architectural constraints, development roadmap, and collaboration rules for Dompetku.
+This document defines the permanent product vision, technical direction, architectural constraints, development roadmap, and collaboration rules for Catetin.
 
 All AI agents working inside this project MUST read and follow these instructions.
 
@@ -24,7 +24,7 @@ These instructions take priority over assumptions, unsolicited suggestions, or i
 
 # 1. PROJECT IDENTITY
 
-Project Name: Dompetku
+Project Name: Catetin (formerly Dompetku)
 
 Product Type: Personal Finance Tracker
 

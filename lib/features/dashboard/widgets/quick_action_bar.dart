@@ -50,9 +50,15 @@ class QuickActionBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      'Pemasukan',
-                      style: AppTypography.labelLarge,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Pemasukan',
+                          style: AppTypography.labelLarge,
+                          maxLines: 1,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -84,9 +90,15 @@ class QuickActionBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      'Pengeluaran',
-                      style: AppTypography.labelLarge,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Pengeluaran',
+                          style: AppTypography.labelLarge,
+                          maxLines: 1,
+                        ),
+                      ),
                     ),
                   ],
                 ),

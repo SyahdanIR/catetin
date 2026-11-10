@@ -283,10 +283,13 @@ class _BalanceHeroCardState extends State<BalanceHeroCard> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    'Buka Laporan Finansial',
-                    style: AppTypography.labelMedium.copyWith(
-                      color: AppColors.primaryDark,
+                  Flexible(
+                    child: Text(
+                      'Buka Laporan Finansial',
+                      style: AppTypography.labelMedium.copyWith(
+                        color: AppColors.primaryDark,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 4),

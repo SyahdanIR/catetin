@@ -231,7 +231,7 @@ class AppDatabase extends _$AppDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'dompetku.sqlite'));
+    final file = File(p.join(dbFolder.path, 'catetin.sqlite'));
     return NativeDatabase.createInBackground(file);
   });
 }

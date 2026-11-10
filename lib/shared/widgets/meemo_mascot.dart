@@ -8,7 +8,7 @@ enum MeemoMood {
   saving,
 }
 
-/// Dompetku's assistant and mascot: "Meemo" the Pocket Vault Sprite.
+/// Catetin's assistant and mascot: "Meemo" the Pocket Vault Sprite.
 ///
 /// Drawn entirely with Flutter CustomPainter vectors.
 /// Crisp, lightweight, scalable, and independent of external image assets.

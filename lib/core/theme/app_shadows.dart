@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
-/// Centralized shadows and borders for Dompetku's tactile design language.
+/// Centralized shadows and borders for Catetin's tactile design language.
 class AppBorders {
   AppBorders._();
 

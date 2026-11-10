@@ -6,7 +6,7 @@ import '../features/transactions/screens/transactions_history_screen.dart';
 import '../features/transactions/screens/add_transaction_screen.dart';
 import '../features/receipt_scanner/screens/receipt_scanner_screen.dart';
 import '../features/reports/screens/reports_screen.dart';
-import 'widgets/dompetku_bottom_nav.dart';
+import 'widgets/catetin_bottom_nav.dart';
 
 class NavigationShell extends StatefulWidget {
   final FinanceRepository repository;
@@ -109,7 +109,7 @@ class _NavigationShellState extends State<NavigationShell> {
           ),
         ],
       ),
-      bottomNavigationBar: DompetkuBottomNav(
+      bottomNavigationBar: CatetinBottomNav(
         currentIndex: _currentIndex,
         onTabSelected: _handleTabSelect,
       ),

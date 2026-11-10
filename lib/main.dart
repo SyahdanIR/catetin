@@ -22,18 +22,18 @@ void main() async {
   final repository = FinanceRepository(database: database);
   await repository.init();
 
-  runApp(DompetkuApp(repository: repository));
+  runApp(CatetinApp(repository: repository));
 }
 
-class DompetkuApp extends StatelessWidget {
+class CatetinApp extends StatelessWidget {
   final FinanceRepository repository;
 
-  const DompetkuApp({super.key, required this.repository});
+  const CatetinApp({super.key, required this.repository});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Dompetku',
+      title: 'Catetin',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: NavigationShell(repository: repository),

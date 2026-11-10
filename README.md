@@ -1,4 +1,4 @@
-# Dompetku — Personal Finance Tracker
+# Catetin: Personal Finance Tracker
 
 <p align="center">
   <strong>A modern, friendly, and tactile personal finance mobile application built with Flutter & Dart.</strong>
@@ -14,11 +14,11 @@
 
 ---
 
-## About Dompetku
+## About Catetin
 
-**Dompetku** is a personal finance tracker designed to make everyday money management intuitive, tactile, and stress-free. Unlike sterile corporate banking dashboards or generic AI templates, Dompetku features an original **Tactile Craft** visual identity, combining solid ink borders, micro-translated tactile drop shadows, and an original vector mascot named **Meemo** — your pocket vault guardian.
+**Catetin** is a personal finance tracker designed to make everyday money management intuitive, tactile, and stress-free. Unlike sterile corporate banking dashboards or generic AI templates, Catetin features an original **Tactile Craft** visual identity, combining solid ink borders, micro-translated tactile drop shadows, and an original vector mascot named **Meemo** (your pocket vault guardian).
 
-Dompetku is architected **offline-first**, prioritizing information clarity, ergonomic touch targets (>= 44px), and strict WCAG AA contrast standards.
+Catetin is architected **offline-first**, prioritizing information clarity, ergonomic touch targets (>= 44px), and strict WCAG AA contrast standards.
 
 ---
 
@@ -155,7 +155,7 @@ lib/
 
 ## Quality Control & Testing
 
-Dompetku is verified against Flutter lints and unit/widget test suites:
+Catetin is verified against Flutter lints and unit/widget test suites:
 
 - **Static Analysis**:
   ```bash

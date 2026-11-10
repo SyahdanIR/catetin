@@ -113,10 +113,16 @@ class _TactileButtonState extends State<TactileButton> {
                 ),
                 const SizedBox(width: 8),
               ],
-              Text(
-                widget.text,
-                style: AppTypography.labelLarge.copyWith(
-                  color: _getTextColor(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.text,
+                    maxLines: 1,
+                    style: AppTypography.labelLarge.copyWith(
+                      color: _getTextColor(),
+                    ),
+                  ),
                 ),
               ),
             ],

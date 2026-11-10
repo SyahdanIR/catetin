@@ -43,31 +43,68 @@ class TransactionFilterBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Search Field
-          Container(
-            height: 46,
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
-              border: Border.all(color: AppColors.border, width: 1.0),
-            ),
-            child: TextField(
-              controller: searchController,
-              onChanged: onSearchChanged,
-              style: AppTypography.bodyMedium.copyWith(color: AppColors.ink),
-              decoration: InputDecoration(
-                hintText: 'Cari catatan transaksi...',
-                hintStyle: AppTypography.bodyMedium.copyWith(color: AppColors.inkMuted),
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppColors.inkMuted),
-                suffixIcon: searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        onPressed: onClearSearch,
-                      )
-                    : null,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          TextField(
+            controller: searchController,
+            onChanged: onSearchChanged,
+            textAlignVertical: TextAlignVertical.center,
+            style: AppTypography.bodyMedium.copyWith(color: AppColors.ink),
+            decoration: InputDecoration(
+              hintText: 'Cari catatan transaksi...',
+              hintStyle: AppTypography.bodyMedium.copyWith(
+                color: AppColors.inkMuted,
+              ),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: AppColors.inkMuted,
+              ),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 44,
+                minHeight: 44,
+              ),
+              suffixIcon: searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(
+                        Icons.clear_rounded,
+                        size: 18,
+                        color: AppColors.inkMuted,
+                      ),
+                      tooltip: 'Hapus pencarian',
+                      onPressed: onClearSearch,
+                    )
+                  : null,
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 44,
+                minHeight: 44,
+              ),
+              filled: true,
+              fillColor: AppColors.background,
+              isDense: true,
+              constraints: const BoxConstraints(minHeight: 46),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
+                borderSide: const BorderSide(
+                  color: AppColors.border,
+                  width: 1.0,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
+                borderSide: const BorderSide(
+                  color: AppColors.border,
+                  width: 1.0,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
+                borderSide: const BorderSide(
+                  color: AppColors.primaryDark,
+                  width: AppBorders.borderWidthThick,
+                ),
               ),
             ),
           ),

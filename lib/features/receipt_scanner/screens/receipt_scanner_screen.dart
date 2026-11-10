@@ -212,31 +212,37 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.incomeLight,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: AppColors.border,
-                                    width: 1.0,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.incomeLight,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppColors.border,
+                                      width: 1.0,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.check_rounded,
+                                    size: 16,
+                                    color: AppColors.incomeDark,
                                   ),
                                 ),
-                                child: const Icon(
-                                  Icons.check_rounded,
-                                  size: 16,
-                                  color: AppColors.incomeDark,
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Hasil Ekstraksi Struk',
+                                    style: AppTypography.labelLarge,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Hasil Ekstraksi Struk',
-                                style: AppTypography.labelLarge,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           TextButton.icon(
                             onPressed: () {
                               setState(() => _currentStep = ScanStep.camera);
@@ -348,15 +354,22 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Total Terdeteksi',
-                              style: AppTypography.labelLarge,
+                            Expanded(
+                              child: Text(
+                                'Total Terdeteksi',
+                                style: AppTypography.labelLarge,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            Text(
-                              CurrencyFormatter.format(_totalAmount),
-                              style: AppTypography.moneyHero.copyWith(
-                                fontSize: 18,
-                                color: AppColors.primaryDark,
+                            const SizedBox(width: 8),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                CurrencyFormatter.format(_totalAmount),
+                                style: AppTypography.moneyHero.copyWith(
+                                  fontSize: 18,
+                                  color: AppColors.primaryDark,
+                                ),
                               ),
                             ),
                           ],
@@ -369,9 +382,14 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                       Row(
                         children: [
                           Expanded(
+                            flex: 2,
                             child: TactileButton(
                               text: 'Pindai Ulang',
                               variant: TactileButtonVariant.secondary,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
                               onPressed: () {
                                 setState(() => _currentStep = ScanStep.camera);
                               },
@@ -379,11 +397,15 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            flex: 2,
+                            flex: 3,
                             child: TactileButton(
                               text: 'Simpan ke Dompet',
                               variant: TactileButtonVariant.primary,
                               icon: Icons.check_circle_rounded,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
                               onPressed: _confirmAndSave,
                             ),
                           ),

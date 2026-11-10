@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Centralized color palette for Dompetku.
+/// Centralized color palette for Catetin.
 ///
 /// Designed with an original "Modern Tactile Slate & Botanical Teal" identity.
 /// Avoids generic AI gradients and provides WCAG AA compliant contrast ratios.

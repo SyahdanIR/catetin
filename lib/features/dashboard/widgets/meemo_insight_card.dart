@@ -40,10 +40,13 @@ class MeemoInsightCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Pesan Meemo Hari Ini',
-                      style: AppTypography.labelLarge.copyWith(
-                        color: AppColors.highlightText,
+                    Flexible(
+                      child: Text(
+                        'Pesan Meemo Hari Ini',
+                        style: AppTypography.labelLarge.copyWith(
+                          color: AppColors.highlightText,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 6),

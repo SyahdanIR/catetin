@@ -1,4 +1,4 @@
-package com.example.dompetku
+package com.example.catetin
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -3,11 +3,11 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_shadows.dart';
 import '../../core/theme/app_typography.dart';
 
-class DompetkuBottomNav extends StatelessWidget {
+class CatetinBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTabSelected;
 
-  const DompetkuBottomNav({
+  const CatetinBottomNav({
     super.key,
     required this.currentIndex,
     required this.onTabSelected,

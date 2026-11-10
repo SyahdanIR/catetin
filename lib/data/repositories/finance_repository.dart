@@ -4,7 +4,7 @@ import '../models/category_model.dart';
 import '../models/transaction_model.dart';
 import '../models/wallet_model.dart';
 
-/// Central state and repository for Dompetku financial transactions.
+/// Central state and repository for Catetin financial transactions.
 ///
 /// Implements offline-first SQLite persistence via Drift with reactive updates.
 class FinanceRepository extends ChangeNotifier {
@@ -255,8 +255,14 @@ class FinanceRepository extends ChangeNotifier {
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
-  List<TransactionModel> getRecentTransactions({int limit = 5}) {
-    return _transactions.take(limit).toList();
+  List<TransactionModel> getRecentTransactions({
+    int limit = 5,
+    String? walletId,
+  }) {
+    final filtered = (walletId == null || walletId == 'all')
+        ? _transactions
+        : _transactions.where((t) => t.walletId == walletId);
+    return filtered.take(limit).toList();
   }
 
   List<TransactionModel> getTransactionsForPeriod({
@@ -264,6 +270,7 @@ class FinanceRepository extends ChangeNotifier {
     TransactionType? typeFilter,
     String? categoryFilter,
     String? searchQuery,
+    String? walletId,
   }) {
     return _transactions.where((t) {
       if (month != null) {
@@ -271,6 +278,9 @@ class FinanceRepository extends ChangeNotifier {
             t.transactionDate.month != month.month) {
           return false;
         }
+      }
+      if (walletId != null && walletId != 'all' && t.walletId != walletId) {
+        return false;
       }
       if (typeFilter != null && t.type != typeFilter) {
         return false;
@@ -396,6 +406,42 @@ class FinanceRepository extends ChangeNotifier {
       if (tx.type == TransactionType.expense &&
           !tx.transactionDate.isBefore(s) &&
           !tx.transactionDate.isAfter(e) &&
+          (walletId == null || walletId == 'all' || tx.walletId == walletId)) {
+        breakdown[tx.categoryId] = (breakdown[tx.categoryId] ?? 0) + tx.amount;
+      }
+    }
+    return breakdown;
+  }
+
+  /// Returns the Monday to Sunday date range for [reference]'s calendar week.
+  static ({DateTime start, DateTime end}) weekRangeFor(DateTime reference) {
+    final monday = DateTime(
+      reference.year,
+      reference.month,
+      reference.day - (reference.weekday - 1),
+    );
+    final sunday = DateTime(monday.year, monday.month, monday.day + 6);
+    return (start: monday, end: sunday);
+  }
+
+  /// Category expense breakdown for [reference]'s calendar week (Monday to Sunday).
+  Map<String, int> getWeeklyCategoryExpenseBreakdown(
+    DateTime reference, {
+    String? walletId,
+  }) {
+    final range = weekRangeFor(reference);
+    return getCategoryExpenseBreakdownForPeriod(
+      range.start,
+      range.end,
+      walletId: walletId,
+    );
+  }
+
+  /// Category expense breakdown across all recorded transactions.
+  Map<String, int> getAllTimeCategoryExpenseBreakdown({String? walletId}) {
+    final Map<String, int> breakdown = {};
+    for (final tx in _transactions) {
+      if (tx.type == TransactionType.expense &&
           (walletId == null || walletId == 'all' || tx.walletId == walletId)) {
         breakdown[tx.categoryId] = (breakdown[tx.categoryId] ?? 0) + tx.amount;
       }
