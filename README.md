@@ -65,7 +65,7 @@ Catetin is architected **offline-first**, prioritizing information clarity, ergo
 
 ## Visual Identity & Design System
 
-Dompetku uses an original design language crafted specifically for approachable personal finance:
+Catetin uses an original design language crafted specifically for approachable personal finance:
 
 - **Color Palette**:
   - **Canvas Background**: `#F7F8F6` (Soft Chalk Canvas)
@@ -119,7 +119,7 @@ lib/
 └── shell/
     ├── navigation_shell.dart             # Root indexed shell & tab coordination
     └── widgets/
-        └── dompetku_bottom_nav.dart      # Persistent tactile bottom navigation bar
+        └── catetin_bottom_nav.dart      # Persistent tactile bottom navigation bar
 ```
 
 ---
