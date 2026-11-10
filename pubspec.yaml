@@ -41,6 +41,11 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
+  # Phase 3: Receipt Scanner (camera, gallery photo picker, on-device Latin OCR)
+  camera: ^0.12.2
+  image_picker: ^1.2.4
+  google_mlkit_text_recognition: ^1.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
