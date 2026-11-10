@@ -43,6 +43,7 @@ class ReceiptScannerScreen extends StatefulWidget {
 
 class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
   ScanStep _currentStep = ScanStep.camera;
+  bool _isSaving = false;
 
   // Extracted mock receipt data (editable)
   String _merchantName = 'Indomaret Point';
@@ -58,6 +59,18 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
   int get _totalAmount =>
       _extractedItems.fold(0, (sum, item) => sum + (item.price * item.qty));
 
+  String _targetWalletId() {
+    final wallets = widget.repository.wallets;
+    final selected = widget.repository.selectedWalletId;
+    if (selected != 'all' && wallets.any((w) => w.id == selected)) {
+      return selected;
+    }
+    if (wallets.any((w) => w.id == 'main_wallet')) {
+      return 'main_wallet';
+    }
+    return wallets.isNotEmpty ? wallets.first.id : 'main_wallet';
+  }
+
   void _triggerScan() {
     setState(() => _currentStep = ScanStep.processing);
 
@@ -69,15 +82,30 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
     });
   }
 
-  void _confirmAndSave() {
+  Future<void> _confirmAndSave() async {
+    if (_isSaving) return;
+
+    if (widget.repository.wallets.isEmpty ||
+        widget.repository.getCategoryById(_selectedCategory) == null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.expense,
+            content: Text('Data dompet atau kategori belum tersedia.'),
+          ),
+        );
+      return;
+    }
+
     final now = DateTime.now();
     final tx = TransactionModel(
-      id: 'tx_scan_${now.millisecondsSinceEpoch}',
+      id: 'tx_scan_${now.microsecondsSinceEpoch}',
       title: 'Belanja di $_merchantName',
       amount: _totalAmount,
       type: TransactionType.expense,
       categoryId: _selectedCategory,
-      walletId: 'main_wallet',
+      walletId: _targetWalletId(),
       transactionDate: _receiptDate,
       note: 'Pindai struk otomatis: ${_extractedItems.length} item',
       source: 'receipt',
@@ -85,15 +113,35 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
       updatedAt: now,
     );
 
-    widget.repository.addTransaction(tx);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isSaving = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Transaksi struk berhasil disimpan ke dompet!'),
-      ),
-    );
-
-    widget.onSaved();
+    try {
+      await widget.repository.addTransaction(tx);
+      if (!mounted) return;
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Transaksi struk berhasil disimpan ke dompet!'),
+          ),
+        );
+      widget.onSaved();
+    } catch (_) {
+      if (!mounted) return;
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.expense,
+            content: Text('Gagal menyimpan transaksi struk. Coba lagi.'),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   @override
@@ -244,9 +292,13 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                           ),
                           const SizedBox(width: 8),
                           TextButton.icon(
-                            onPressed: () {
-                              setState(() => _currentStep = ScanStep.camera);
-                            },
+                            onPressed: _isSaving
+                                ? null
+                                : () {
+                                    setState(
+                                      () => _currentStep = ScanStep.camera,
+                                    );
+                                  },
                             icon: const Icon(Icons.refresh_rounded, size: 16),
                             label: const Text('Foto Ulang'),
                             style: TextButton.styleFrom(
@@ -390,23 +442,30 @@ class _ReceiptScannerScreenState extends State<ReceiptScannerScreen> {
                                 horizontal: 12,
                                 vertical: 12,
                               ),
-                              onPressed: () {
-                                setState(() => _currentStep = ScanStep.camera);
-                              },
+                              onPressed: _isSaving
+                                  ? null
+                                  : () {
+                                      setState(
+                                        () => _currentStep = ScanStep.camera,
+                                      );
+                                    },
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             flex: 3,
                             child: TactileButton(
-                              text: 'Simpan ke Dompet',
+                              text: _isSaving
+                                  ? 'Menyimpan...'
+                                  : 'Simpan ke Dompet',
                               variant: TactileButtonVariant.primary,
                               icon: Icons.check_circle_rounded,
+                              isLoading: _isSaving,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 12,
                               ),
-                              onPressed: _confirmAndSave,
+                              onPressed: _isSaving ? null : _confirmAndSave,
                             ),
                           ),
                         ],

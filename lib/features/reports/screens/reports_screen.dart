@@ -71,6 +71,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget build(BuildContext context) {
     final income = widget.repository.getMonthlyIncome(_currentPeriodDate);
     final expense = widget.repository.getMonthlyExpense(_currentPeriodDate);
+    final netBalance = widget.repository.getMonthlyNetBalance(_currentPeriodDate);
     final savingRate = widget.repository.getSavingRate(_currentPeriodDate);
     final breakdown =
         widget.repository.getCategoryExpenseBreakdown(_currentPeriodDate);
@@ -329,7 +330,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
               if (_selectedTab == ReportTab.cashflow) ...[
                 // Three Cashflow Summary Cards
-                CashflowSummaryCards(income: income, expense: expense),
+                CashflowSummaryCards(
+                  income: income,
+                  expense: expense,
+                  netBalance: netBalance,
+                ),
 
                 const SizedBox(height: 16),
 
@@ -426,6 +431,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 CategoryBreakdownChart(
                   breakdown: breakdown,
                   totalExpense: expense,
+                  categoryResolver: widget.repository.resolveCategory,
                 ),
               ] else ...[
                 // Portfolio & Assets Overview

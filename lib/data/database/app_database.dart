@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart' show Color, IconData;
+import 'package:flutter/material.dart' show Color;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -16,6 +16,7 @@ class Wallets extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   IntColumn get initialBalance => integer().withDefault(const Constant(0))();
+  IntColumn get iconCodePoint => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
 
   @override
@@ -59,41 +60,78 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? _openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (Migrator m) async {
         await m.createAll();
-
-        // 1. Seed default wallet: "Dompet Utama" (AGENTS.md Section 7)
-        await into(wallets).insert(
-          WalletsCompanion.insert(
-            id: 'main_wallet',
-            name: 'Dompet Utama',
-            initialBalance: const Value(0),
-            createdAt: DateTime(2026, 1, 1),
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
-
-        // 2. Seed default categories (AGENTS.md Phase 1 requirements)
-        for (final cat in CategoryModel.defaultCategories) {
-          await into(categories).insert(
-            CategoriesCompanion.insert(
-              id: cat.id,
-              name: cat.name,
-              type: cat.type.name,
-              iconCodePoint: cat.icon.codePoint,
-              colorValue: cat.color.toARGB32(),
-              bgColorValue: cat.bgColor.toARGB32(),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
+        await _seedDefaultWallets();
+        await _seedDefaultCategories();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          await m.addColumn(wallets, wallets.iconCodePoint);
+          // Seed bank_bca/ewallet before beforeOpen activates FK enforcement
+          // so any v1 transactions targeting them remain valid without losing data.
+          await _seedDefaultWallets();
+          await _backfillDefaultWalletIcons();
+          await _seedDefaultCategories();
         }
       },
+      beforeOpen: (details) async {
+        await customStatement('PRAGMA foreign_keys = ON');
+      },
     );
+  }
+
+  Future<void> _seedDefaultWallets() async {
+    for (final wallet in WalletModel.defaultWallets) {
+      await into(wallets).insert(
+        WalletsCompanion.insert(
+          id: wallet.id,
+          name: wallet.name,
+          initialBalance: Value(wallet.initialBalance),
+          iconCodePoint: Value(wallet.icon.codePoint),
+          createdAt: wallet.createdAt,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    }
+  }
+
+  Future<void> _backfillDefaultWalletIcons() async {
+    for (final wallet in WalletModel.defaultWallets) {
+      await (update(wallets)
+            ..where((w) => w.id.equals(wallet.id) & w.iconCodePoint.isNull()))
+          .write(
+        WalletsCompanion(
+          iconCodePoint: Value(wallet.icon.codePoint),
+        ),
+      );
+    }
+  }
+
+  Future<void> _seedDefaultCategories() async {
+    for (final cat in CategoryModel.defaultCategories) {
+      await into(categories).insert(
+        CategoriesCompanion.insert(
+          id: cat.id,
+          name: cat.name,
+          type: cat.type.name,
+          iconCodePoint: cat.icon.codePoint,
+          colorValue: cat.color.toARGB32(),
+          bgColorValue: cat.bgColor.toARGB32(),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    }
+  }
+
+  Future<bool> areForeignKeysEnabled() async {
+    final row = await customSelect('PRAGMA foreign_keys').getSingle();
+    return row.read<int>('foreign_keys') == 1;
   }
 
   // --- Transaction Queries ---
@@ -144,7 +182,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateTransactionRow(TransactionModel tx) async {
-    await (update(transactions)..where((t) => t.id.equals(tx.id))).write(
+    final updatedCount =
+        await (update(transactions)..where((t) => t.id.equals(tx.id))).write(
       TransactionsCompanion(
         title: Value(tx.title),
         type: Value(tx.type.name),
@@ -158,6 +197,9 @@ class AppDatabase extends _$AppDatabase {
         isRecurring: Value(tx.isRecurring),
       ),
     );
+    if (updatedCount == 0) {
+      throw StateError('Transaksi ${tx.id} tidak ditemukan di database.');
+    }
   }
 
   Future<void> deleteTransactionRow(String id) async {
@@ -174,6 +216,10 @@ class AppDatabase extends _$AppDatabase {
               name: row.name,
               initialBalance: row.initialBalance,
               createdAt: row.createdAt,
+              icon: WalletModel.iconForCodePoint(
+                row.iconCodePoint,
+                walletId: row.id,
+              ),
             ))
         .toList();
   }
@@ -184,6 +230,7 @@ class AppDatabase extends _$AppDatabase {
         id: w.id,
         name: w.name,
         initialBalance: Value(w.initialBalance),
+        iconCodePoint: Value(w.icon.codePoint),
         createdAt: w.createdAt,
       ),
       mode: InsertMode.insertOrIgnore,
@@ -201,8 +248,7 @@ class AppDatabase extends _$AppDatabase {
       return CategoryModel(
         id: row.id,
         name: row.name,
-        // ignore: non_const_argument_for_const_parameter
-        icon: IconData(row.iconCodePoint, fontFamily: 'MaterialIcons'),
+        icon: CategoryModel.iconForCodePoint(row.iconCodePoint),
         color: Color(row.colorValue),
         bgColor: Color(row.bgColorValue),
         type: categoryType,

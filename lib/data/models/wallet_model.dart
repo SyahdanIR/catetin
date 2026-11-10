@@ -39,6 +39,26 @@ class WalletModel {
     ),
   ];
 
+  static IconData iconForCodePoint(int? codePoint, {String? walletId}) {
+    if (codePoint != null) {
+      for (final wallet in defaultWallets) {
+        if (wallet.icon.codePoint == codePoint) {
+          return wallet.icon;
+        }
+      }
+      // ignore: non_const_argument_for_const_parameter
+      return IconData(codePoint, fontFamily: 'MaterialIcons');
+    }
+    if (walletId != null) {
+      for (final wallet in defaultWallets) {
+        if (wallet.id == walletId) {
+          return wallet.icon;
+        }
+      }
+    }
+    return Icons.account_balance_wallet_rounded;
+  }
+
   static WalletModel getById(String id) {
     return defaultWallets.firstWhere(
       (w) => w.id == id,

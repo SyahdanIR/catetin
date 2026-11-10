@@ -68,4 +68,22 @@ class AppDateFormatter {
   static bool isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
+
+  /// Subtracts one calendar year while clamping Feb 29 to Feb 28 in non-leap years.
+  static DateTime subtractOneYear(DateTime date) {
+    final targetYear = date.year - 1;
+    final daysInTargetMonth = DateTime(targetYear, date.month + 1, 0).day;
+    final safeDay =
+        date.day <= daysInTargetMonth ? date.day : daysInTargetMonth;
+    return DateTime(
+      targetYear,
+      date.month,
+      safeDay,
+      date.hour,
+      date.minute,
+      date.second,
+      date.millisecond,
+      date.microsecond,
+    );
+  }
 }

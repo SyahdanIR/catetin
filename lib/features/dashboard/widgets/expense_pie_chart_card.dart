@@ -17,6 +17,7 @@ class ExpensePieChartCard extends StatelessWidget {
   final Widget? headerTrailing;
   final void Function(CategoryModel category, int amount, double percentage)?
       onCategoryTap;
+  final CategoryModel Function(String id)? categoryResolver;
 
   const ExpensePieChartCard({
     super.key,
@@ -28,15 +29,17 @@ class ExpensePieChartCard extends StatelessWidget {
     required this.emptyActionHint,
     this.headerTrailing,
     this.onCategoryTap,
+    this.categoryResolver,
   });
 
   static const double _chartDiameter = 124.0;
 
   @override
   Widget build(BuildContext context) {
+    final resolveCategory = categoryResolver ?? CategoryModel.getById;
     final sortedSlices = breakdown.entries
         .where((entry) => entry.value > 0)
-        .map((entry) => MapEntry(CategoryModel.getById(entry.key), entry.value))
+        .map((entry) => MapEntry(resolveCategory(entry.key), entry.value))
         .toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 

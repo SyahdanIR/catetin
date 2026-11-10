@@ -17,6 +17,7 @@ class TactileButton extends StatefulWidget {
   final TactileButtonVariant variant;
   final IconData? icon;
   final bool isFullWidth;
+  final bool isLoading;
   final double height;
   final EdgeInsetsGeometry padding;
 
@@ -27,6 +28,7 @@ class TactileButton extends StatefulWidget {
     this.variant = TactileButtonVariant.primary,
     this.icon,
     this.isFullWidth = false,
+    this.isLoading = false,
     this.height = 48.0, // Ensures >= 44px minimum tap target (R-03)
     this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
   });
@@ -38,8 +40,12 @@ class TactileButton extends StatefulWidget {
 class _TactileButtonState extends State<TactileButton> {
   bool _isPressed = false;
 
+  bool get _isInteractive => widget.onPressed != null && !widget.isLoading;
+
   Color _getBackgroundColor() {
-    if (widget.onPressed == null) return AppColors.surfaceMuted;
+    if (widget.onPressed == null && !widget.isLoading) {
+      return AppColors.surfaceMuted;
+    }
     switch (widget.variant) {
       case TactileButtonVariant.primary:
         return AppColors.primary;
@@ -55,7 +61,9 @@ class _TactileButtonState extends State<TactileButton> {
   }
 
   Color _getTextColor() {
-    if (widget.onPressed == null) return AppColors.inkMuted;
+    if (widget.onPressed == null && !widget.isLoading) {
+      return AppColors.inkMuted;
+    }
     switch (widget.variant) {
       case TactileButtonVariant.primary:
       case TactileButtonVariant.accent:
@@ -69,7 +77,8 @@ class _TactileButtonState extends State<TactileButton> {
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = widget.onPressed != null;
+    final isEnabled = _isInteractive;
+    final hasVisualFill = widget.onPressed != null || widget.isLoading;
     final shadowOffset = (_isPressed && isEnabled) ? 1.0 : 3.0;
     final translationOffset = (_isPressed && isEnabled) ? 2.0 : 0.0;
 
@@ -79,7 +88,7 @@ class _TactileButtonState extends State<TactileButton> {
         onTapDown: isEnabled ? (_) => setState(() => _isPressed = true) : null,
         onTapUp: isEnabled ? (_) => setState(() => _isPressed = false) : null,
         onTapCancel: isEnabled ? () => setState(() => _isPressed = false) : null,
-        onTap: widget.onPressed,
+        onTap: isEnabled ? widget.onPressed : null,
         child: Container(
           height: widget.height,
           padding: widget.padding,
@@ -88,7 +97,7 @@ class _TactileButtonState extends State<TactileButton> {
             color: _getBackgroundColor(),
             borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
             border: Border.all(
-              color: isEnabled ? AppColors.border : AppColors.borderLight,
+              color: hasVisualFill ? AppColors.border : AppColors.borderLight,
               width: AppBorders.borderWidth,
             ),
             boxShadow: isEnabled
@@ -105,7 +114,17 @@ class _TactileButtonState extends State<TactileButton> {
             mainAxisSize: widget.isFullWidth ? MainAxisSize.max : MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (widget.icon != null) ...[
+              if (widget.isLoading) ...[
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_getTextColor()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ] else if (widget.icon != null) ...[
                 Icon(
                   widget.icon,
                   size: 18,

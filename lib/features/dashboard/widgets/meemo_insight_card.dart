@@ -6,10 +6,15 @@ import '../../../shared/widgets/meemo_mascot.dart';
 
 class MeemoInsightCard extends StatelessWidget {
   final VoidCallback onActionTap;
+  final String badgeLabel;
+  final String message;
 
   const MeemoInsightCard({
     super.key,
     required this.onActionTap,
+    this.badgeLabel = 'Info',
+    this.message =
+        'Catat pemasukan dan pengeluaranmu untuk melihat ringkasan bulan ini.',
   });
 
   @override
@@ -58,7 +63,7 @@ class MeemoInsightCard extends StatelessWidget {
                         border: Border.all(color: AppColors.border, width: 1),
                       ),
                       child: Text(
-                        'Tips',
+                        badgeLabel,
                         style: AppTypography.labelSmall.copyWith(
                           fontSize: 10,
                           color: AppColors.ink,
@@ -69,7 +74,7 @@ class MeemoInsightCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Pengeluaran harianmu terkendali rapi. Sisihkan 20% penghasilan untuk dana darurat!',
+                  message,
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.inkLight,
                   ),

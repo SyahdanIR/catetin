@@ -1,12 +1,142 @@
+import 'dart:async';
 import 'dart:io';
-import 'package:flutter_test/flutter_test.dart';
+
+import 'package:catetin/core/utils/currency_formatter.dart';
+import 'package:catetin/core/utils/date_formatter.dart';
 import 'package:catetin/data/database/app_database.dart';
 import 'package:catetin/data/models/category_model.dart';
 import 'package:catetin/data/models/transaction_model.dart';
+import 'package:catetin/data/models/wallet_model.dart';
 import 'package:catetin/data/repositories/finance_repository.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart'
+    show GeneratedDatabase, MigrationStrategy, Table, TableInfo, driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+
+class _CountingAppDatabase extends AppDatabase {
+  int getTransactionsCalls = 0;
+  int getWalletsCalls = 0;
+  int getCategoriesCalls = 0;
+  Completer<void>? barrier;
+
+  _CountingAppDatabase(super.e);
+
+  @override
+  Future<List<TransactionModel>> getAllTransactions() async {
+    getTransactionsCalls++;
+    if (barrier != null) {
+      await barrier!.future;
+    }
+    return super.getAllTransactions();
+  }
+
+  @override
+  Future<List<WalletModel>> getAllWallets() async {
+    getWalletsCalls++;
+    return super.getAllWallets();
+  }
+
+  @override
+  Future<List<CategoryModel>> getAllCategories() async {
+    getCategoriesCalls++;
+    return super.getAllCategories();
+  }
+}
+
+class _FailingWriteAppDatabase extends AppDatabase {
+  bool failWrites = true;
+
+  _FailingWriteAppDatabase(super.e);
+
+  @override
+  Future<void> insertTransactionRow(TransactionModel tx) async {
+    if (failWrites) {
+      throw StateError('Simulated SQLite insert failure');
+    }
+    return super.insertTransactionRow(tx);
+  }
+
+  @override
+  Future<void> updateTransactionRow(TransactionModel tx) async {
+    if (failWrites) {
+      throw StateError('Simulated SQLite update failure');
+    }
+    return super.updateTransactionRow(tx);
+  }
+
+  @override
+  Future<void> deleteTransactionRow(String id) async {
+    if (failWrites) {
+      throw StateError('Simulated SQLite delete failure');
+    }
+    return super.deleteTransactionRow(id);
+  }
+}
+
+class _V1LegacyDatabase extends GeneratedDatabase {
+  _V1LegacyDatabase(super.e);
+
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  Iterable<TableInfo<Table, Object?>> get allTables => const [];
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE wallets (
+              id TEXT NOT NULL PRIMARY KEY,
+              name TEXT NOT NULL,
+              initial_balance INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL
+            );
+          ''');
+          await customStatement('''
+            CREATE TABLE categories (
+              id TEXT NOT NULL PRIMARY KEY,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL,
+              icon_code_point INTEGER NOT NULL,
+              color_value INTEGER NOT NULL,
+              bg_color_value INTEGER NOT NULL
+            );
+          ''');
+          await customStatement('''
+            CREATE TABLE transactions (
+              id TEXT NOT NULL PRIMARY KEY,
+              title TEXT NOT NULL,
+              type TEXT NOT NULL,
+              amount INTEGER NOT NULL,
+              category_id TEXT NOT NULL REFERENCES categories (id),
+              wallet_id TEXT NOT NULL REFERENCES wallets (id),
+              transaction_date INTEGER NOT NULL,
+              note TEXT NULL,
+              source TEXT NOT NULL DEFAULT 'manual',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              is_recurring INTEGER NOT NULL DEFAULT 0
+            );
+          ''');
+
+          await customStatement(
+            "INSERT INTO wallets (id, name, initial_balance, created_at) "
+            "VALUES ('main_wallet', 'Dompet Utama', 1000000, 1767225600);",
+          );
+          await customStatement(
+            "INSERT INTO categories (id, name, type, icon_code_point, color_value, bg_color_value) "
+            "VALUES ('food', 'Makanan & Minuman', 'expense', 58732, 4293467747, 4294959835);",
+          );
+          // Legacy v1 row pointing to bank_bca before wallets table contained bank_bca
+          await customStatement(
+            "INSERT INTO transactions (id, title, type, amount, category_id, wallet_id, transaction_date, note, source, created_at, updated_at, is_recurring) "
+            "VALUES ('v1_tx_1', 'Kopi V1 BCA', 'expense', 45000, 'food', 'bank_bca', 1794000000, 'Migrasi v1', 'manual', 1794000000, 1794000000, 0);",
+          );
+        },
+      );
+}
 
 void main() {
   setUpAll(() {
@@ -27,118 +157,103 @@ void main() {
       await database.close();
     });
 
-    // 1. Insert transaction
-    test('1. Insert transaction into database', () async {
-      final now = DateTime.now();
-      final tx = TransactionModel(
-        id: 'test_tx_1',
-        title: 'Beli Buku Pemrograman',
-        amount: 150000,
-        type: TransactionType.expense,
-        categoryId: 'shopping',
-        walletId: 'main_wallet',
-        transactionDate: now,
-        note: 'Buku Dart & Flutter',
-        source: 'manual',
-        createdAt: now,
-        updatedAt: now,
-      );
-
-      await repository.addTransaction(tx);
-      final persisted = await database.getTransactionById('test_tx_1');
-      expect(persisted, isNotNull);
-      expect(persisted!.title, 'Beli Buku Pemrograman');
-      expect(persisted.amount, 150000);
+    test('1. Empty database initialization starts with 0 transactions and Rp 0 balance', () async {
+      expect(repository.isInitialized, isTrue);
+      expect(repository.transactions, isEmpty);
+      expect(await database.getAllTransactions(), isEmpty);
+      expect(repository.getTotalBalance(), 0);
+      expect(repository.getTotalIncome(), 0);
+      expect(repository.getTotalExpense(), 0);
     });
 
-    // 2. Retrieve transaction
-    test('2. Retrieve transaction by ID and in list', () async {
-      final now = DateTime.now();
-      final tx = TransactionModel(
-        id: 'test_tx_retrieve',
-        title: 'Pembayaran Servis Motor',
-        amount: 250000,
-        type: TransactionType.expense,
-        categoryId: 'transport',
-        walletId: 'main_wallet',
-        transactionDate: now,
-        source: 'manual',
-        createdAt: now,
-        updatedAt: now,
+    test('2. Default wallets are seeded in SQLite matching selectable UI options', () async {
+      final dbWallets = await database.getAllWallets();
+      expect(dbWallets.length, 3);
+      expect(
+        dbWallets.map((w) => w.id),
+        containsAll(['main_wallet', 'bank_bca', 'ewallet']),
       );
-
-      await repository.addTransaction(tx);
-      final retrieved = await database.getTransactionById('test_tx_retrieve');
-      expect(retrieved, isNotNull);
-      expect(retrieved!.id, 'test_tx_retrieve');
-      expect(retrieved.amount, 250000);
-
-      final allTransactions = await database.getAllTransactions();
-      expect(allTransactions.any((item) => item.id == 'test_tx_retrieve'), isTrue);
+      expect(repository.wallets.length, 3);
+      expect(repository.getWalletById('main_wallet')?.name, 'Dompet Utama');
+      expect(repository.getWalletById('bank_bca')?.name, 'Rekening Bank');
+      expect(repository.getWalletById('ewallet')?.name, 'E-Wallet');
     });
 
-    // 3. Update transaction
-    test('3. Update existing transaction details', () async {
-      final now = DateTime.now();
-      final initialTx = TransactionModel(
-        id: 'test_tx_update',
-        title: 'Makan Pagi',
-        amount: 25000,
+    test('3. Default categories are seeded without duplication across repeated inits', () async {
+      final initialCategories = await database.getAllCategories();
+      final initialWallets = await database.getAllWallets();
+
+      expect(initialCategories.length, CategoryModel.defaultCategories.length);
+
+      final incomeCatNames = initialCategories
+          .where((c) => c.type == CategoryType.income)
+          .map((c) => c.name)
+          .toList();
+      expect(
+        incomeCatNames,
+        containsAll(['Gaji', 'Bonus', 'Bisnis', 'Investasi', 'Pemasukan Lainnya']),
+      );
+
+      final expenseCatNames = initialCategories
+          .where((c) => c.type == CategoryType.expense)
+          .map((c) => c.name)
+          .toList();
+      expect(expenseCatNames, containsAll([
+        'Makanan & Minuman',
+        'Transportasi',
+        'Belanja',
+        'Hiburan',
+        'Tagihan',
+        'Kesehatan',
+        'Pengeluaran Lainnya',
+      ]));
+
+      await repository.init();
+      await repository.refresh();
+
+      expect((await database.getAllCategories()).length, initialCategories.length);
+      expect((await database.getAllWallets()).length, initialWallets.length);
+    });
+
+    test('4. SQLite foreign keys are enabled and reject invalid walletId or categoryId', () async {
+      expect(await database.areForeignKeysEnabled(), isTrue);
+
+      final now = DateTime(2026, 11, 10, 12, 0);
+      final badWalletTx = TransactionModel(
+        id: 'tx_bad_wallet',
+        title: 'Invalid Wallet Ref',
+        amount: 50000,
         type: TransactionType.expense,
         categoryId: 'food',
-        walletId: 'main_wallet',
+        walletId: 'nonexistent_wallet',
         transactionDate: now,
-        source: 'manual',
         createdAt: now,
         updatedAt: now,
       );
-      await repository.addTransaction(initialTx);
 
-      final updatedTx = initialTx.copyWith(
-        title: 'Makan Pagi + Jus Buah',
-        amount: 40000,
-        note: 'Nasi uduk dan jus alpukat',
-        updatedAt: now.add(const Duration(minutes: 5)),
+      await expectLater(
+        repository.addTransaction(badWalletTx),
+        throwsA(isA<SqliteException>()),
       );
-      await repository.updateTransaction(updatedTx);
+      expect(repository.transactions, isEmpty);
 
-      final found = await database.getTransactionById('test_tx_update');
-      expect(found, isNotNull);
-      expect(found!.title, 'Makan Pagi + Jus Buah');
-      expect(found.amount, 40000);
-      expect(found.note, 'Nasi uduk dan jus alpukat');
-    });
-
-    // 4. Delete transaction
-    test('4. Delete transaction by ID', () async {
-      final now = DateTime.now();
-      final tx = TransactionModel(
-        id: 'test_tx_delete',
-        title: 'Langganan Musik',
-        amount: 55000,
-        type: TransactionType.expense,
-        categoryId: 'bills',
+      final badCategoryTx = badWalletTx.copyWith(
+        id: 'tx_bad_cat',
         walletId: 'main_wallet',
-        transactionDate: now,
-        source: 'manual',
-        createdAt: now,
-        updatedAt: now,
+        categoryId: 'nonexistent_category',
       );
-      await repository.addTransaction(tx);
-      expect(await database.getTransactionById('test_tx_delete'), isNotNull);
-
-      await repository.deleteTransaction('test_tx_delete');
-      final found = await database.getTransactionById('test_tx_delete');
-      expect(found, isNull);
-      expect(repository.transactions.any((item) => item.id == 'test_tx_delete'), isFalse);
+      await expectLater(
+        repository.addTransaction(badCategoryTx),
+        throwsA(isA<SqliteException>()),
+      );
+      expect(repository.transactions, isEmpty);
     });
 
-    // 5. Insert income
-    test('5. Insert income transaction', () async {
-      final now = DateTime.now();
+    test('5. Add income transaction and verify persistence', () async {
+      final now = DateTime(2026, 11, 10, 9, 0);
       final incomeTx = TransactionModel(
         id: 'test_tx_income',
-        title: 'Gaji Bulanan Tambahan',
+        title: 'Gaji Bulanan',
         amount: 5000000,
         type: TransactionType.income,
         categoryId: 'salary',
@@ -154,18 +269,18 @@ void main() {
       expect(found, isNotNull);
       expect(found!.type, TransactionType.income);
       expect(found.amount, 5000000);
+      expect(repository.getTotalBalance(), 5000000);
     });
 
-    // 6. Insert expense
-    test('6. Insert expense transaction', () async {
-      final now = DateTime.now();
+    test('6. Add expense transaction and verify persistence across all default wallets', () async {
+      final now = DateTime(2026, 11, 10, 13, 0);
       final expenseTx = TransactionModel(
         id: 'test_tx_expense',
-        title: 'Tagihan Listrik Rumah',
+        title: 'Belanja QRIS',
         amount: 350000,
         type: TransactionType.expense,
         categoryId: 'bills',
-        walletId: 'main_wallet',
+        walletId: 'ewallet',
         transactionDate: now,
         source: 'manual',
         createdAt: now,
@@ -176,286 +291,333 @@ void main() {
       final found = await database.getTransactionById('test_tx_expense');
       expect(found, isNotNull);
       expect(found!.type, TransactionType.expense);
+      expect(found.walletId, 'ewallet');
       expect(found.amount, 350000);
+      expect(repository.getBalanceForWallet('ewallet'), -350000);
     });
 
-    // 7. Verify balance calculation (Initial + Income - Expense)
-    test('7. Verify balance formula: Total Balance = Initial Balance + Total Income - Total Expenses', () async {
-      // Clear seeded transactions to test formula deterministically
-      final currentList = List<TransactionModel>.from(repository.transactions);
-      for (final tx in currentList) {
-        await repository.deleteTransaction(tx.id);
-      }
-
-      // Initial state: 0
-      expect(repository.getTotalBalance(), 0);
-
-      final now = DateTime.now();
-      // Add Income: 10,000,000 IDR
-      await repository.addTransaction(TransactionModel(
-        id: 'calc_inc_1',
-        title: 'Pemasukan Gaji',
-        amount: 10000000,
-        type: TransactionType.income,
-        categoryId: 'salary',
-        walletId: 'main_wallet',
-        transactionDate: now,
-        source: 'manual',
-        createdAt: now,
-        updatedAt: now,
-      ));
-
-      // Add Income: 2,500,000 IDR
-      await repository.addTransaction(TransactionModel(
-        id: 'calc_inc_2',
-        title: 'Bonus Proyek',
-        amount: 2500000,
-        type: TransactionType.income,
-        categoryId: 'bonus',
-        walletId: 'main_wallet',
-        transactionDate: now,
-        source: 'manual',
-        createdAt: now,
-        updatedAt: now,
-      ));
-
-      // Add Expense: 1,500,000 IDR
-      await repository.addTransaction(TransactionModel(
-        id: 'calc_exp_1',
-        title: 'Belanja Bulanan',
-        amount: 1500000,
+    test('7. Update transaction reflects in SQLite and repository', () async {
+      final now = DateTime(2026, 11, 10, 8, 0);
+      final initialTx = TransactionModel(
+        id: 'test_tx_update',
+        title: 'Makan Pagi',
+        amount: 25000,
         type: TransactionType.expense,
-        categoryId: 'shopping',
+        categoryId: 'food',
         walletId: 'main_wallet',
         transactionDate: now,
-        source: 'manual',
         createdAt: now,
         updatedAt: now,
-      ));
+      );
+      await repository.addTransaction(initialTx);
 
-      // Add Expense: 500,000 IDR
-      await repository.addTransaction(TransactionModel(
-        id: 'calc_exp_2',
-        title: 'Tagihan Air & Listrik',
-        amount: 500000,
+      final updatedTx = initialTx.copyWith(
+        title: 'Makan Pagi + Jus Buah',
+        amount: 40000,
+        walletId: 'bank_bca',
+        note: 'Nasi uduk dan jus alpukat',
+        updatedAt: now.add(const Duration(minutes: 5)),
+      );
+      await repository.updateTransaction(updatedTx);
+
+      final found = await database.getTransactionById('test_tx_update');
+      expect(found, isNotNull);
+      expect(found!.title, 'Makan Pagi + Jus Buah');
+      expect(found.amount, 40000);
+      expect(found.walletId, 'bank_bca');
+      expect(found.note, 'Nasi uduk dan jus alpukat');
+    });
+
+    test('8. Delete transaction removes record from SQLite and repository', () async {
+      final now = DateTime(2026, 11, 10, 10, 0);
+      final tx = TransactionModel(
+        id: 'test_tx_delete',
+        title: 'Langganan Musik',
+        amount: 55000,
         type: TransactionType.expense,
         categoryId: 'bills',
         walletId: 'main_wallet',
         transactionDate: now,
-        source: 'manual',
         createdAt: now,
         updatedAt: now,
-      ));
+      );
+      await repository.addTransaction(tx);
+      expect(await database.getTransactionById('test_tx_delete'), isNotNull);
 
-      // Total Expected = 0 + (10000000 + 2500000) - (1500000 + 500000) = 10,500,000
-      const expectedBalance = 10500000;
-      expect(repository.getTotalBalance(), expectedBalance);
-      expect(repository.getTotalIncome(), 12500000);
-      expect(repository.getTotalExpense(), 2000000);
+      await repository.deleteTransaction('test_tx_delete');
+      expect(await database.getTransactionById('test_tx_delete'), isNull);
+      expect(repository.transactions, isEmpty);
     });
 
-    // 8. Verify monthly income
-    test('8. Verify monthly income calculation for target month', () async {
-      // Clear seeded data
-      final currentList = List<TransactionModel>.from(repository.transactions);
-      for (final tx in currentList) {
-        await repository.deleteTransaction(tx.id);
-      }
+    test('9 & 10. Scenarios A-D: balance and monthly totals recalculate accurately after edit and delete', () async {
+      final month = DateTime(2026, 11, 10);
+      expect(repository.getTotalBalance(), 0);
 
-      final dateThisMonth = DateTime(2026, 11, 10);
-      final dateOtherMonth = DateTime(2026, 10, 15);
+      // Scenario A: Add income Rp5.000.000 -> Rp5.000.000
+      await repository.addTransaction(TransactionModel(
+        id: 'sc_inc',
+        title: 'Gaji Bulan Ini',
+        amount: 5000000,
+        type: TransactionType.income,
+        categoryId: 'salary',
+        walletId: 'main_wallet',
+        transactionDate: month,
+        createdAt: month,
+        updatedAt: month,
+      ));
+      expect(repository.getTotalBalance(), 5000000);
+      expect(repository.getMonthlyIncome(month), 5000000);
+      expect(repository.getMonthlyExpense(month), 0);
+      expect(repository.getMonthlyNetBalance(month), 5000000);
+
+      // Scenario B: Add expense Rp50.000 -> Rp4.950.000
+      final expenseTx = TransactionModel(
+        id: 'sc_exp',
+        title: 'Makan Siang',
+        amount: 50000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        transactionDate: month,
+        createdAt: month,
+        updatedAt: month,
+      );
+      await repository.addTransaction(expenseTx);
+      expect(repository.getTotalBalance(), 4950000);
+      expect(repository.getMonthlyIncome(month), 5000000);
+      expect(repository.getMonthlyExpense(month), 50000);
+      expect(repository.getMonthlyNetBalance(month), 4950000);
+
+      // Scenario C: Edit expense to Rp75.000 -> Rp4.925.000
+      await repository.updateTransaction(expenseTx.copyWith(amount: 75000));
+      expect(repository.getTotalBalance(), 4925000);
+      expect(repository.getMonthlyIncome(month), 5000000);
+      expect(repository.getMonthlyExpense(month), 75000);
+      expect(repository.getMonthlyNetBalance(month), 4925000);
+
+      // Scenario D: Delete the expense -> Rp5.000.000
+      await repository.deleteTransaction('sc_exp');
+      expect(repository.getTotalBalance(), 5000000);
+      expect(repository.getMonthlyIncome(month), 5000000);
+      expect(repository.getMonthlyExpense(month), 0);
+      expect(repository.getMonthlyNetBalance(month), 5000000);
+    });
+
+    test('11 & 12. Monthly income/expense, daily net balance, and wallet filtering work accurately', () async {
+      final nov10 = DateTime(2026, 11, 10, 12, 0);
+      final oct15 = DateTime(2026, 10, 15, 12, 0);
 
       await repository.addTransaction(TransactionModel(
-        id: 'inc_nov_1',
-        title: 'Gaji November',
+        id: 'm_inc_main',
+        title: 'Gaji Utama',
         amount: 7000000,
         type: TransactionType.income,
         categoryId: 'salary',
         walletId: 'main_wallet',
-        transactionDate: dateThisMonth,
-        source: 'manual',
-        createdAt: dateThisMonth,
-        updatedAt: dateThisMonth,
+        transactionDate: nov10,
+        createdAt: nov10,
+        updatedAt: nov10,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'm_exp_main',
+        title: 'Makan Siang',
+        amount: 100000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        transactionDate: nov10,
+        createdAt: nov10,
+        updatedAt: nov10,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'm_exp_bca',
+        title: 'Bensin BCA',
+        amount: 250000,
+        type: TransactionType.expense,
+        categoryId: 'transport',
+        walletId: 'bank_bca',
+        transactionDate: nov10,
+        createdAt: nov10,
+        updatedAt: nov10,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'm_oct_bca',
+        title: 'Transfer Masuk Oktober',
+        amount: 1000000,
+        type: TransactionType.income,
+        categoryId: 'business',
+        walletId: 'bank_bca',
+        transactionDate: oct15,
+        createdAt: oct15,
+        updatedAt: oct15,
       ));
 
+      expect(repository.getMonthlyIncome(nov10), 7000000);
+      expect(repository.getMonthlyExpense(nov10), 350000);
+      expect(repository.getMonthlyNetBalance(nov10), 6650000);
+
+      expect(repository.getMonthlyIncome(nov10, walletId: 'bank_bca'), 0);
+      expect(repository.getMonthlyExpense(nov10, walletId: 'bank_bca'), 250000);
+      expect(repository.getMonthlyNetBalance(nov10, walletId: 'bank_bca'), -250000);
+      expect(repository.getBalanceForWallet('bank_bca'), 750000);
+      expect(repository.getBalanceForWallet('main_wallet'), 6900000);
+      expect(repository.getTotalBalance(), 7650000);
+
+      expect(repository.getDailyNetBalance(nov10), 6650000);
+      expect(repository.getDailyNetBalance(nov10, walletId: 'bank_bca'), -250000);
+
+      final bcaHistory = repository.getTransactionsForPeriod(walletId: 'bank_bca');
+      expect(bcaHistory.length, 2);
+      expect(bcaHistory.every((t) => t.walletId == 'bank_bca'), isTrue);
+
+      expect(
+        repository.getCategoryExpenseBreakdown(nov10, walletId: 'main_wallet'),
+        {'food': 100000},
+      );
+      expect(
+        repository.getCategoryExpenseBreakdown(nov10),
+        {'food': 100000, 'transport': 250000},
+      );
+    });
+
+    test('13. CurrencyFormatter formats negative, zero, and signed IDR amounts without extra spaces', () {
+      expect(CurrencyFormatter.format(50000), 'Rp 50.000');
+      expect(CurrencyFormatter.format(-50000), '-Rp 50.000');
+      expect(CurrencyFormatter.format(0), 'Rp 0');
+      expect(CurrencyFormatter.format(-50000, includeSymbol: false), '-50.000');
+      expect(CurrencyFormatter.format(-385000, withSign: true), '- Rp 385.000');
+      expect(CurrencyFormatter.format(2800000, withSign: true), '+ Rp 2.800.000');
+    });
+
+    test('14. Date range boundaries use exclusive next-day cutoff and Feb 29 leap-day subtraction stays in February', () async {
+      final start = DateTime(2026, 11, 1);
+      final end = DateTime(2026, 11, 10);
+
+      // Note: Drift NativeDatabase stores DateTime at second precision (truncating .999 to .000),
+      // while startDate <= transactionDate < dayAfterEndDate holds strictly at both boundaries.
       await repository.addTransaction(TransactionModel(
-        id: 'inc_nov_2',
-        title: 'Bonus November',
-        amount: 1000000,
+        id: 'b_end_235959',
+        title: 'Transaksi Menit Terakhir',
+        amount: 120000,
+        type: TransactionType.expense,
+        categoryId: 'food',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 11, 10, 23, 59, 59, 999),
+        createdAt: start,
+        updatedAt: start,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'b_next_midnight',
+        title: 'Transaksi Hari Berikutnya',
+        amount: 300000,
+        type: TransactionType.expense,
+        categoryId: 'shopping',
+        walletId: 'main_wallet',
+        transactionDate: DateTime(2026, 11, 11, 0, 0, 0),
+        createdAt: start,
+        updatedAt: start,
+      ));
+      await repository.addTransaction(TransactionModel(
+        id: 'b_inc_end',
+        title: 'Pemasukan Menit Terakhir',
+        amount: 500000,
         type: TransactionType.income,
         categoryId: 'bonus',
         walletId: 'main_wallet',
-        transactionDate: dateThisMonth,
-        source: 'manual',
-        createdAt: dateThisMonth,
-        updatedAt: dateThisMonth,
+        transactionDate: DateTime(2026, 11, 10, 23, 59, 59),
+        createdAt: start,
+        updatedAt: start,
       ));
 
-      await repository.addTransaction(TransactionModel(
-        id: 'inc_oct_1',
-        title: 'Gaji Oktober',
-        amount: 6500000,
-        type: TransactionType.income,
-        categoryId: 'salary',
-        walletId: 'main_wallet',
-        transactionDate: dateOtherMonth,
-        source: 'manual',
-        createdAt: dateOtherMonth,
-        updatedAt: dateOtherMonth,
-      ));
+      expect(repository.getPeriodExpense(start, end), 120000);
+      expect(repository.getPeriodIncome(start, end), 500000);
+      expect(repository.getPeriodNetBalance(start, end), 380000);
+      expect(repository.getCategoryExpenseBreakdownForPeriod(start, end), {'food': 120000});
 
-      final monthlyIncome = repository.getMonthlyIncome(DateTime(2026, 11));
-      expect(monthlyIncome, 8000000);
+      final inRange = repository.getTransactionsForDateRange(start: start, end: end);
+      expect(inRange.map((t) => t.id), containsAll(['b_end_235959', 'b_inc_end']));
+      expect(inRange.map((t) => t.id), isNot(contains('b_next_midnight')));
+
+      // Leap day check: 2024-02-29 minus 1 year must be 2023-02-28 (never March 1)
+      expect(
+        AppDateFormatter.subtractOneYear(DateTime(2024, 2, 29)),
+        DateTime(2023, 2, 28),
+      );
+      expect(
+        AppDateFormatter.subtractOneYear(DateTime(2025, 2, 28)),
+        DateTime(2024, 2, 28),
+      );
     });
 
-    // 9. Verify monthly expenses
-    test('9. Verify monthly expenses calculation for target month', () async {
-      // Clear seeded data
-      final currentList = List<TransactionModel>.from(repository.transactions);
-      for (final tx in currentList) {
-        await repository.deleteTransaction(tx.id);
-      }
-
-      final dateThisMonth = DateTime(2026, 11, 5);
-      final dateOtherMonth = DateTime(2026, 10, 20);
-
-      await repository.addTransaction(TransactionModel(
-        id: 'exp_nov_1',
-        title: 'Makan November',
-        amount: 250000,
-        type: TransactionType.expense,
-        categoryId: 'food',
-        walletId: 'main_wallet',
-        transactionDate: dateThisMonth,
-        source: 'manual',
-        createdAt: dateThisMonth,
-        updatedAt: dateThisMonth,
-      ));
-
-      await repository.addTransaction(TransactionModel(
-        id: 'exp_nov_2',
-        title: 'Bensin November',
-        amount: 150000,
-        type: TransactionType.expense,
-        categoryId: 'transport',
-        walletId: 'main_wallet',
-        transactionDate: dateThisMonth,
-        source: 'manual',
-        createdAt: dateThisMonth,
-        updatedAt: dateThisMonth,
-      ));
-
-      await repository.addTransaction(TransactionModel(
-        id: 'exp_oct_1',
-        title: 'Makan Oktober',
-        amount: 300000,
-        type: TransactionType.expense,
-        categoryId: 'food',
-        walletId: 'main_wallet',
-        transactionDate: dateOtherMonth,
-        source: 'manual',
-        createdAt: dateOtherMonth,
-        updatedAt: dateOtherMonth,
-      ));
-
-      final monthlyExpense = repository.getMonthlyExpense(DateTime(2026, 11));
-      expect(monthlyExpense, 400000);
-    });
-
-    // 10. Verify category relationships
-    test('10. Verify category definitions and relationships', () async {
-      final categories = await database.getAllCategories();
-      expect(categories, isNotEmpty);
-
-      // Check default income categories
-      final incomeCatNames = categories
-          .where((c) => c.type == CategoryType.income)
-          .map((c) => c.name)
-          .toList();
-      expect(incomeCatNames, containsAll(['Gaji', 'Bonus', 'Bisnis', 'Investasi', 'Pemasukan Lainnya']));
-
-      // Check default expense categories
-      final expenseCatNames = categories
-          .where((c) => c.type == CategoryType.expense)
-          .map((c) => c.name)
-          .toList();
-      expect(expenseCatNames, containsAll([
-        'Makanan & Minuman',
-        'Transportasi',
-        'Belanja',
-        'Hiburan',
-        'Tagihan',
-        'Kesehatan',
-        'Pengeluaran Lainnya'
-      ]));
-
-      // Verify transaction resolves category model via repository
-      final foodCategory = repository.getCategoryById('food');
-      expect(foodCategory, isNotNull);
-      expect(foodCategory!.name, 'Makanan & Minuman');
-    });
-
-    // 11. Verify default seed data is not duplicated on multiple inits
-    test('11. Verify default seed data is not duplicated on multiple inits', () async {
-      final initialCategories = await database.getAllCategories();
-      final initialWallets = await database.getAllWallets();
-
-      // Trigger re-initialization
-      await repository.init();
-      await repository.init();
-
-      final reloadedCategories = await database.getAllCategories();
-      final reloadedWallets = await database.getAllWallets();
-
-      expect(reloadedCategories.length, initialCategories.length);
-      expect(reloadedWallets.length, initialWallets.length);
-      expect(reloadedWallets.where((w) => w.name == 'Dompet Utama').length, 1);
-    });
-
-    // 12. Verify persistence after closing and reopening a file-backed database using a temporary file
-    test('12. Verify persistence across closing and reopening file-backed database', () async {
-      final tempDir = Directory.systemTemp.createTempSync('catetin_persist_test_');
+    test('15 & 16. File-backed persistence across restart preserves inserts, updates, deletes, and never re-seeds empty ledger', () async {
+      final tempDir = Directory.systemTemp.createTempSync('catetin_persist_full_');
       final dbFile = File(p.join(tempDir.path, 'persisted_catetin.sqlite'));
 
       try {
-        // Step 1: Open database, initialize repository, write transaction
+        // Session 1: fresh DB must stay empty (0 mock transactions), then insert two items
         final db1 = AppDatabase(NativeDatabase(dbFile));
         final repo1 = FinanceRepository(database: db1);
         await repo1.init();
+        expect(repo1.transactions, isEmpty);
 
-        final now = DateTime(2026, 11, 9, 14, 0);
-        final persistentTx = TransactionModel(
-          id: 'tx_persistent_test',
-          title: 'Investasi Logam Mulia',
+        final txDate = DateTime(2026, 11, 9, 14, 0);
+        await repo1.addTransaction(TransactionModel(
+          id: 'tx_p_1',
+          title: 'Investasi Emas',
           amount: 1250000,
           type: TransactionType.income,
           categoryId: 'investment',
           walletId: 'main_wallet',
-          transactionDate: now,
-          note: 'Beli emas antam 1 gram',
-          source: 'manual',
-          createdAt: now,
-          updatedAt: now,
-        );
-        await repo1.addTransaction(persistentTx);
-
-        // Step 2: Explicitly close first database connection
+          transactionDate: txDate,
+          createdAt: txDate,
+          updatedAt: txDate,
+        ));
+        await repo1.addTransaction(TransactionModel(
+          id: 'tx_p_2',
+          title: 'Kopi Pagi',
+          amount: 25000,
+          type: TransactionType.expense,
+          categoryId: 'food',
+          walletId: 'bank_bca',
+          transactionDate: txDate,
+          createdAt: txDate,
+          updatedAt: txDate,
+        ));
         await db1.close();
 
-        // Step 3: Reopen database from same file
+        // Session 2: reopen, verify both exist, update tx_p_1, delete tx_p_2
         final db2 = AppDatabase(NativeDatabase(dbFile));
         final repo2 = FinanceRepository(database: db2);
         await repo2.init();
+        expect(repo2.transactions.length, 2);
+        expect(repo2.getTotalBalance(), 1225000);
 
-        // Step 4: Verify transaction persisted
-        final recoveredTx = await db2.getTransactionById('tx_persistent_test');
-        expect(recoveredTx, isNotNull);
-        expect(recoveredTx!.id, 'tx_persistent_test');
-        expect(recoveredTx.title, 'Investasi Logam Mulia');
-        expect(recoveredTx.amount, 1250000);
-        expect(recoveredTx.note, 'Beli emas antam 1 gram');
-
+        final tx1 = repo2.transactions.firstWhere((t) => t.id == 'tx_p_1');
+        await repo2.updateTransaction(tx1.copyWith(amount: 1500000, title: 'Investasi Emas Updated'));
+        await repo2.deleteTransaction('tx_p_2');
         await db2.close();
+
+        // Session 3: reopen, verify update + delete survived, then delete remaining tx_p_1
+        final db3 = AppDatabase(NativeDatabase(dbFile));
+        final repo3 = FinanceRepository(database: db3);
+        await repo3.init();
+        expect(repo3.transactions.length, 1);
+        expect(repo3.transactions.first.title, 'Investasi Emas Updated');
+        expect(repo3.transactions.first.amount, 1500000);
+        expect(repo3.getTotalBalance(), 1500000);
+
+        await repo3.deleteTransaction('tx_p_1');
+        expect(repo3.transactions, isEmpty);
+        await db3.close();
+
+        // Session 4: reopen empty DB; must remain empty and NEVER re-seed tx_1..tx_6
+        final db4 = AppDatabase(NativeDatabase(dbFile));
+        final repo4 = FinanceRepository(database: db4);
+        await repo4.init();
+        expect(repo4.transactions, isEmpty);
+        expect(await db4.getAllTransactions(), isEmpty);
+        expect(repo4.getTotalBalance(), 0);
+        await db4.close();
       } finally {
         if (tempDir.existsSync()) {
           tempDir.deleteSync(recursive: true);
@@ -463,97 +625,106 @@ void main() {
       }
     });
 
-    test('13. Verify Monday-Sunday weekly category expense breakdown and wallet filter', () async {
-      final currentList = List<TransactionModel>.from(repository.transactions);
-      for (final tx in currentList) {
-        await repository.deleteTransaction(tx.id);
-      }
+    test('17. Concurrent FinanceRepository.init() calls deduplicate into a single DB initialization', () async {
+      final spyDb = _CountingAppDatabase(NativeDatabase.memory());
+      spyDb.barrier = Completer<void>();
+      final spyRepo = FinanceRepository(database: spyDb);
 
-      // Sunday 1 Nov 2026 belongs to Monday 26 Oct 2026 .. Sunday 1 Nov 2026
-      final refSunday = DateTime(2026, 11, 1);
-      final weekRange = FinanceRepository.weekRangeFor(refSunday);
-      expect(weekRange.start, DateTime(2026, 10, 26));
-      expect(weekRange.end, DateTime(2026, 11, 1));
+      // Constructor must NOT trigger unawaited init()
+      await Future<void>.delayed(Duration.zero);
+      expect(spyDb.getTransactionsCalls, 0);
 
-      await repository.addTransaction(TransactionModel(
-        id: 'w_in_1',
-        title: 'Kopi Senin',
-        amount: 35000,
-        type: TransactionType.expense,
-        categoryId: 'food',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(2026, 10, 26, 9, 0),
-        createdAt: refSunday,
-        updatedAt: refSunday,
-      ));
-      await repository.addTransaction(TransactionModel(
-        id: 'w_in_2',
-        title: 'Makan Minggu',
-        amount: 65000,
-        type: TransactionType.expense,
-        categoryId: 'food',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(2026, 11, 1, 19, 0),
-        createdAt: refSunday,
-        updatedAt: refSunday,
-      ));
-      await repository.addTransaction(TransactionModel(
-        id: 'w_in_3',
-        title: 'Bensin Bank BCA',
+      final futures = [spyRepo.init(), spyRepo.init(), spyRepo.init()];
+      spyDb.barrier!.complete();
+      await Future.wait(futures);
+
+      expect(spyDb.getTransactionsCalls, 1);
+      expect(spyDb.getWalletsCalls, 1);
+      expect(spyDb.getCategoriesCalls, 1);
+
+      // Subsequent init() calls after completion remain no-ops
+      await spyRepo.init();
+      expect(spyDb.getTransactionsCalls, 1);
+
+      await spyDb.close();
+    });
+
+    test('18. Failed database write operations preserve state, set errorMessage, and rethrow', () async {
+      final failDb = _FailingWriteAppDatabase(NativeDatabase.memory())..failWrites = false;
+      final failRepo = FinanceRepository(database: failDb);
+      await failRepo.init();
+
+      final now = DateTime(2026, 11, 10);
+      final existing = TransactionModel(
+        id: 'existing_1',
+        title: 'Existing',
         amount: 100000,
-        type: TransactionType.expense,
-        categoryId: 'transport',
-        walletId: 'bank_bca',
-        transactionDate: DateTime(2026, 10, 29, 12, 0),
-        createdAt: refSunday,
-        updatedAt: refSunday,
-      ));
-      // Outside week (previous Sunday 25 Oct 2026)
-      await repository.addTransaction(TransactionModel(
-        id: 'w_out_1',
-        title: 'Belanja Minggu Lalu',
-        amount: 200000,
-        type: TransactionType.expense,
-        categoryId: 'shopping',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(2026, 10, 25, 20, 0),
-        createdAt: refSunday,
-        updatedAt: refSunday,
-      ));
-      // Income inside week should be excluded from expense breakdown
-      await repository.addTransaction(TransactionModel(
-        id: 'w_inc_1',
-        title: 'Bonus',
-        amount: 500000,
         type: TransactionType.income,
-        categoryId: 'bonus',
+        categoryId: 'salary',
         walletId: 'main_wallet',
-        transactionDate: DateTime(2026, 10, 30, 10, 0),
-        createdAt: refSunday,
-        updatedAt: refSunday,
-      ));
-
-      final allWalletsWeekly =
-          repository.getWeeklyCategoryExpenseBreakdown(refSunday, walletId: 'all');
-      expect(allWalletsWeekly, {'food': 100000, 'transport': 100000});
-
-      final mainWalletWeekly = repository.getWeeklyCategoryExpenseBreakdown(
-        refSunday,
-        walletId: 'main_wallet',
+        transactionDate: now,
+        createdAt: now,
+        updatedAt: now,
       );
-      expect(mainWalletWeekly, {'food': 100000});
+      await failRepo.addTransaction(existing);
 
-      final allTimeMain = repository.getAllTimeCategoryExpenseBreakdown(
-        walletId: 'main_wallet',
-      );
-      expect(allTimeMain, {'food': 100000, 'shopping': 200000});
+      failDb.failWrites = true;
 
-      final recent3Main = repository.getRecentTransactions(
-        limit: 3,
-        walletId: 'main_wallet',
+      await expectLater(
+        failRepo.addTransaction(existing.copyWith(id: 'new_fail', amount: 50000)),
+        throwsA(isA<StateError>()),
       );
-      expect(recent3Main.length, 3);
-      expect(recent3Main.every((tx) => tx.walletId == 'main_wallet'), isTrue);
+      expect(failRepo.errorMessage, isNotNull);
+      expect(failRepo.isLoading, isFalse);
+      expect(failRepo.transactions.length, 1);
+      expect(failRepo.getTotalBalance(), 100000);
+
+      await expectLater(
+        failRepo.updateTransaction(existing.copyWith(amount: 999999)),
+        throwsA(isA<StateError>()),
+      );
+      expect(failRepo.transactions.first.amount, 100000);
+
+      await expectLater(
+        failRepo.deleteTransaction('existing_1'),
+        throwsA(isA<StateError>()),
+      );
+      expect(failRepo.transactions.length, 1);
+
+      await failDb.close();
+    });
+
+    test('19. Schema v1 to v2 migration preserves user data and seeds bank_bca/ewallet before enabling FKs', () async {
+      final tempDir = Directory.systemTemp.createTempSync('catetin_migrate_v1_v2_');
+      final dbFile = File(p.join(tempDir.path, 'v1_upgrade.sqlite'));
+
+      try {
+        final v1Db = _V1LegacyDatabase(NativeDatabase(dbFile));
+        await v1Db.customSelect('SELECT count(*) AS c FROM transactions').getSingle();
+        await v1Db.close();
+
+        // Reopen with v2 AppDatabase -> executes onUpgrade(1 -> 2) and beforeOpen
+        final v2Db = AppDatabase(NativeDatabase(dbFile));
+        final v2Repo = FinanceRepository(database: v2Db);
+        await v2Repo.init();
+
+        expect(await v2Db.areForeignKeysEnabled(), isTrue);
+        expect(v2Repo.wallets.length, 3);
+        final mainWallet = v2Repo.getWalletById('main_wallet')!;
+        expect(mainWallet.initialBalance, 1000000);
+        expect(v2Repo.getWalletById('bank_bca'), isNotNull);
+        expect(v2Repo.getWalletById('ewallet'), isNotNull);
+
+        expect(v2Repo.transactions.length, 1);
+        expect(v2Repo.transactions.first.id, 'v1_tx_1');
+        expect(v2Repo.getTotalBalance(), 955000);
+
+        await v2Db.close();
+      } finally {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      }
     });
   });
 }

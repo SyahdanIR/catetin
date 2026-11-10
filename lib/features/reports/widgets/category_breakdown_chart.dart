@@ -8,15 +8,18 @@ import '../../../data/models/category_model.dart';
 class CategoryBreakdownChart extends StatelessWidget {
   final Map<String, num> breakdown;
   final num totalExpense;
+  final CategoryModel Function(String id)? categoryResolver;
 
   const CategoryBreakdownChart({
     super.key,
     required this.breakdown,
     required this.totalExpense,
+    this.categoryResolver,
   });
 
   @override
   Widget build(BuildContext context) {
+    final resolveCategory = categoryResolver ?? CategoryModel.getById;
     if (breakdown.isEmpty || totalExpense <= 0) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -82,7 +85,7 @@ class CategoryBreakdownChart extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppBorders.radiusSmall - 1),
               child: Row(
                 children: sortedEntries.map((entry) {
-                  final category = CategoryModel.getById(entry.key);
+                  final category = resolveCategory(entry.key);
                   final flex = ((entry.value / totalExpense) * 1000).toInt();
                   return Expanded(
                     flex: flex > 0 ? flex : 1,
@@ -106,7 +109,7 @@ class CategoryBreakdownChart extends StatelessWidget {
             ),
             itemBuilder: (context, i) {
               final entry = sortedEntries[i];
-              final category = CategoryModel.getById(entry.key);
+              final category = resolveCategory(entry.key);
               final percentage = (entry.value / totalExpense) * 100;
 
               return Row(

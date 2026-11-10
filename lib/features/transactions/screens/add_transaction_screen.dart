@@ -5,7 +5,6 @@ import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/transaction_model.dart';
 import '../../../data/models/category_model.dart';
-import '../../../data/models/wallet_model.dart';
 import '../../../data/repositories/finance_repository.dart';
 import '../../../shared/widgets/tactile_button.dart';
 
@@ -40,6 +39,40 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   late String _selectedWalletId;
   late DateTime _selectedDate;
   bool _isRecurring = false;
+  bool _isSaving = false;
+
+  String _defaultCategoryIdFor(TransactionType type) {
+    final preferredId = type == TransactionType.income ? 'salary' : 'food';
+    final matching = _categoriesForType(type);
+    if (matching.any((c) => c.id == preferredId)) {
+      return preferredId;
+    }
+    return matching.isNotEmpty ? matching.first.id : preferredId;
+  }
+
+  List<CategoryModel> _categoriesForType(TransactionType type) {
+    final source = widget.repository.categories.isNotEmpty
+        ? widget.repository.categories
+        : CategoryModel.defaultCategories;
+    return source.where((c) {
+      if (type == TransactionType.income) {
+        return c.type == CategoryType.income || c.type == CategoryType.both;
+      }
+      return c.type == CategoryType.expense || c.type == CategoryType.both;
+    }).toList();
+  }
+
+  String _defaultWalletId() {
+    final wallets = widget.repository.wallets;
+    final selected = widget.repository.selectedWalletId;
+    if (selected != 'all' && wallets.any((w) => w.id == selected)) {
+      return selected;
+    }
+    if (wallets.any((w) => w.id == 'main_wallet')) {
+      return 'main_wallet';
+    }
+    return wallets.isNotEmpty ? wallets.first.id : 'main_wallet';
+  }
 
   @override
   void initState() {
@@ -51,9 +84,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       text: edit != null ? edit.amount.round().toString() : '',
     );
     _notesController = TextEditingController(text: edit?.notes ?? '');
-    _selectedCategoryId = edit?.categoryId ??
-        (_type == TransactionType.income ? 'salary' : 'food');
-    _selectedWalletId = edit?.walletId ?? 'main_wallet';
+    _selectedCategoryId = edit?.categoryId ?? _defaultCategoryIdFor(_type);
+    _selectedWalletId = edit?.walletId ?? _defaultWalletId();
     _selectedDate = edit?.date ?? DateTime.now();
     _isRecurring = edit?.isRecurring ?? false;
   }
@@ -97,28 +129,53 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
   }
 
-  void _saveTransaction() {
+  Future<void> _saveTransaction() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = int.tryParse(_amountController.text) ?? 0;
+    final amount = int.tryParse(_amountController.text.trim()) ?? 0;
     if (amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nominal harus lebih besar dari 0')),
-      );
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(content: Text('Nominal harus lebih besar dari 0')),
+        );
       return;
     }
+
+    final availableWallets = widget.repository.wallets;
+    final availableCategories = _categoriesForType(_type);
+    if (availableWallets.isEmpty || availableCategories.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.expense,
+            content: Text('Data dompet atau kategori belum siap.'),
+          ),
+        );
+      return;
+    }
+
+    final validWalletId = availableWallets.any((w) => w.id == _selectedWalletId)
+        ? _selectedWalletId
+        : availableWallets.first.id;
+    final validCategoryId =
+        availableCategories.any((c) => c.id == _selectedCategoryId)
+            ? _selectedCategoryId
+            : availableCategories.first.id;
 
     final isEditing = widget.transactionToEdit != null;
     final now = DateTime.now();
     final transaction = TransactionModel(
       id: isEditing
           ? widget.transactionToEdit!.id
-          : 'tx_${now.millisecondsSinceEpoch}',
+          : 'tx_${now.microsecondsSinceEpoch}',
       title: _titleController.text.trim(),
       amount: amount,
       type: _type,
-      categoryId: _selectedCategoryId,
-      walletId: _selectedWalletId,
+      categoryId: validCategoryId,
+      walletId: validWalletId,
       transactionDate: _selectedDate,
       note: _notesController.text.trim().isEmpty
           ? null
@@ -129,35 +186,50 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       isRecurring: _isRecurring,
     );
 
-    if (isEditing) {
-      widget.repository.updateTransaction(transaction);
-    } else {
-      widget.repository.addTransaction(transaction);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isSaving = true);
+
+    try {
+      if (isEditing) {
+        await widget.repository.updateTransaction(transaction);
+      } else {
+        await widget.repository.addTransaction(transaction);
+      }
+      if (!mounted) return;
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              isEditing
+                  ? 'Transaksi berhasil diperbarui!'
+                  : 'Transaksi berhasil disimpan!',
+            ),
+          ),
+        );
+      widget.onSaved();
+    } catch (_) {
+      if (!mounted) return;
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            backgroundColor: AppColors.expense,
+            content: Text('Gagal menyimpan transaksi. Coba lagi.'),
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isEditing
-              ? 'Transaksi berhasil diperbarui!'
-              : 'Transaksi berhasil disimpan!',
-        ),
-      ),
-    );
-
-    widget.onSaved();
   }
 
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.transactionToEdit != null;
-    final availableCategories = CategoryModel.defaultCategories.where((c) {
-      if (_type == TransactionType.income) {
-        return c.type == CategoryType.income || c.type == CategoryType.both;
-      } else {
-        return c.type == CategoryType.expense || c.type == CategoryType.both;
-      }
-    }).toList();
+    final availableCategories = _categoriesForType(_type);
+    final availableWallets = widget.repository.wallets;
 
     return Scaffold(
       appBar: AppBar(
@@ -168,7 +240,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         leading: widget.onCancel != null
             ? IconButton(
                 icon: const Icon(Icons.close_rounded),
-                onPressed: widget.onCancel,
+                onPressed: _isSaving ? null : widget.onCancel,
               )
             : null,
       ),
@@ -197,12 +269,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _type = TransactionType.expense;
-                              _selectedCategoryId = 'food';
-                            });
-                          },
+                          onTap: _isSaving
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _type = TransactionType.expense;
+                                    _selectedCategoryId = _defaultCategoryIdFor(
+                                      TransactionType.expense,
+                                    );
+                                  });
+                                },
                           behavior: HitTestBehavior.opaque,
                           child: Container(
                             height: 44,
@@ -243,12 +319,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       const SizedBox(width: 4),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _type = TransactionType.income;
-                              _selectedCategoryId = 'salary';
-                            });
-                          },
+                          onTap: _isSaving
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _type = TransactionType.income;
+                                    _selectedCategoryId = _defaultCategoryIdFor(
+                                      TransactionType.income,
+                                    );
+                                  });
+                                },
                           behavior: HitTestBehavior.opaque,
                           child: Container(
                             height: 44,
@@ -400,7 +480,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   children: availableCategories.map((cat) {
                     final isSelected = _selectedCategoryId == cat.id;
                     return GestureDetector(
-                      onTap: () => setState(() => _selectedCategoryId = cat.id),
+                      onTap: _isSaving
+                          ? null
+                          : () => setState(() => _selectedCategoryId = cat.id),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -445,63 +527,72 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 // Wallet / Account Selector
                 Text('Pilih Dompet / Akun', style: AppTypography.labelLarge),
                 const SizedBox(height: 8),
-                Row(
-                  children: WalletModel.defaultWallets.map((wallet) {
-                    final isSelected = _selectedWalletId == wallet.id;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: GestureDetector(
-                          onTap: () => setState(() => _selectedWalletId = wallet.id),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 10,
-                            ),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppColors.primaryLight
-                                  : AppColors.surface,
-                              borderRadius: BorderRadius.circular(
-                                AppBorders.radiusMedium,
+                if (availableWallets.isEmpty)
+                  Text(
+                    'Belum ada dompet tersedia.',
+                    style: AppTypography.bodySmall,
+                  )
+                else
+                  Row(
+                    children: availableWallets.map((wallet) {
+                      final isSelected = _selectedWalletId == wallet.id;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: GestureDetector(
+                            onTap: _isSaving
+                                ? null
+                                : () =>
+                                    setState(() => _selectedWalletId = wallet.id),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 10,
                               ),
-                              border: Border.all(
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
                                 color: isSelected
-                                    ? AppColors.border
-                                    : AppColors.borderLight,
-                                width: isSelected ? 1.5 : 1.0,
-                              ),
-                              boxShadow:
-                                  isSelected ? AppShadows.tactileSmall : null,
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  wallet.icon,
-                                  size: 18,
+                                    ? AppColors.primaryLight
+                                    : AppColors.surface,
+                                borderRadius: BorderRadius.circular(
+                                  AppBorders.radiusMedium,
+                                ),
+                                border: Border.all(
                                   color: isSelected
-                                      ? AppColors.primaryDark
-                                      : AppColors.inkMuted,
+                                      ? AppColors.border
+                                      : AppColors.borderLight,
+                                  width: isSelected ? 1.5 : 1.0,
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  wallet.name,
-                                  style: AppTypography.labelSmall.copyWith(
-                                    fontSize: 11,
-                                    color: AppColors.ink,
+                                boxShadow:
+                                    isSelected ? AppShadows.tactileSmall : null,
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    wallet.icon,
+                                    size: 18,
+                                    color: isSelected
+                                        ? AppColors.primaryDark
+                                        : AppColors.inkMuted,
                                   ),
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    wallet.name,
+                                    style: AppTypography.labelSmall.copyWith(
+                                      fontSize: 11,
+                                      color: AppColors.ink,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                ),
+                      );
+                    }).toList(),
+                  ),
 
                 const SizedBox(height: 18),
 
@@ -509,7 +600,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 Text('Tanggal Transaksi', style: AppTypography.labelLarge),
                 const SizedBox(height: 6),
                 InkWell(
-                  onTap: _pickDate,
+                  onTap: _isSaving ? null : _pickDate,
                   borderRadius: BorderRadius.circular(AppBorders.radiusMedium),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -574,13 +665,19 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      onChanged: (val) {
-                        setState(() => _isRecurring = val ?? false);
-                      },
+                      onChanged: _isSaving
+                          ? null
+                          : (val) {
+                              setState(() => _isRecurring = val ?? false);
+                            },
                     ),
-                    Text(
-                      'Tandai sebagai pengeluaran/pemasukan rutin',
-                      style: AppTypography.bodyMedium.copyWith(color: AppColors.ink),
+                    Expanded(
+                      child: Text(
+                        'Tandai sebagai pengeluaran/pemasukan rutin',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.ink,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -589,8 +686,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
                 // Save Action Button
                 TactileButton(
-                  text: isEditing ? 'Simpan Perubahan' : 'Catat Transaksi Ini',
-                  onPressed: _saveTransaction,
+                  text: _isSaving
+                      ? 'Menyimpan...'
+                      : (isEditing
+                          ? 'Simpan Perubahan'
+                          : 'Catat Transaksi Ini'),
+                  onPressed: _isSaving ? null : _saveTransaction,
+                  isLoading: _isSaving,
                   isFullWidth: true,
                   height: 52,
                   variant: _type == TransactionType.income

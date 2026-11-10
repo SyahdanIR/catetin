@@ -3,20 +3,24 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_shadows.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../data/repositories/finance_repository.dart';
 
 class CashflowSummaryCards extends StatelessWidget {
-  final num income;
-  final num expense;
+  final int income;
+  final int expense;
+  final int? netBalance;
 
   const CashflowSummaryCards({
     super.key,
     required this.income,
     required this.expense,
+    this.netBalance,
   });
 
   @override
   Widget build(BuildContext context) {
-    final net = income - expense;
+    final net =
+        netBalance ?? FinanceRepository.calculateNetAmount(income, expense);
 
     return Column(
       children: [

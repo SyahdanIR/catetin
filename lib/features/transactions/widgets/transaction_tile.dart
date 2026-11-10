@@ -11,18 +11,23 @@ class TransactionTile extends StatelessWidget {
   final TransactionModel transaction;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final CategoryModel? category;
+  final WalletModel? wallet;
 
   const TransactionTile({
     super.key,
     required this.transaction,
     this.onEdit,
     this.onDelete,
+    this.category,
+    this.wallet,
   });
 
   @override
   Widget build(BuildContext context) {
-    final category = CategoryModel.getById(transaction.categoryId);
-    final wallet = WalletModel.getById(transaction.walletId);
+    final resolvedCategory =
+        category ?? CategoryModel.getById(transaction.categoryId);
+    final resolvedWallet = wallet ?? WalletModel.getById(transaction.walletId);
     final isIncome = transaction.type == TransactionType.income;
 
     return Container(
@@ -44,84 +49,110 @@ class TransactionTile extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Category Chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: category.bgColor,
-                  borderRadius: BorderRadius.circular(AppBorders.radiusSmall),
-                  border: Border.all(
-                    color: AppColors.border,
-                    width: 1.0,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Icon(
-                      category.icon,
-                      size: 13,
-                      color: category.color,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      category.name,
-                      style: AppTypography.labelSmall.copyWith(
-                        color: AppColors.ink,
-                        fontSize: 11,
+                    // Category Chip
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: resolvedCategory.bgColor,
+                          borderRadius: BorderRadius.circular(
+                            AppBorders.radiusSmall,
+                          ),
+                          border: Border.all(
+                            color: AppColors.border,
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              resolvedCategory.icon,
+                              size: 13,
+                              color: resolvedCategory.color,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                resolvedCategory.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.labelSmall.copyWith(
+                                  color: AppColors.ink,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
+                    if (transaction.isRecurring)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(
+                            AppBorders.radiusSmall,
+                          ),
+                          border: Border.all(
+                            color: AppColors.border,
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.repeat_rounded,
+                              size: 11,
+                              color: Color(0xFF7E22CE),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Rutin',
+                              style: AppTypography.labelSmall.copyWith(
+                                color: const Color(0xFF7E22CE),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
 
-              if (transaction.isRecurring) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3E8FF),
-                    borderRadius: BorderRadius.circular(AppBorders.radiusSmall),
-                    border: Border.all(
-                      color: AppColors.border,
-                      width: 1.0,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.repeat_rounded,
-                        size: 11,
-                        color: Color(0xFF7E22CE),
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        'Rutin',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: const Color(0xFF7E22CE),
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const Spacer(),
+              const SizedBox(width: 8),
 
               // Amount
-              Text(
-                CurrencyFormatter.format(
-                  isIncome ? transaction.amount : -transaction.amount,
-                  withSign: true,
-                ),
-                style: (isIncome
-                        ? AppTypography.moneyIncome
-                        : AppTypography.moneyExpense)
-                    .copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  CurrencyFormatter.format(
+                    isIncome ? transaction.amount : -transaction.amount,
+                    withSign: true,
+                  ),
+                  style: (isIncome
+                          ? AppTypography.moneyIncome
+                          : AppTypography.moneyExpense)
+                      .copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ],
@@ -154,20 +185,29 @@ class TransactionTile extends StatelessWidget {
           // Bottom Row: Wallet indicator on left, Edit & Delete links on right
           Row(
             children: [
-              Icon(
-                wallet.icon,
-                size: 14,
-                color: AppColors.inkMuted,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                wallet.name,
-                style: AppTypography.labelSmall.copyWith(
-                  color: AppColors.inkMuted,
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      resolvedWallet.icon,
+                      size: 14,
+                      color: AppColors.inkMuted,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        resolvedWallet.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.inkMuted,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-
-              const Spacer(),
+              const SizedBox(width: 8),
 
               if (onEdit != null)
                 TextButton(

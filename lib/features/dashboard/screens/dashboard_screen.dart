@@ -6,7 +6,6 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/category_model.dart';
 import '../../../data/models/transaction_model.dart';
-import '../../../data/models/wallet_model.dart';
 import '../../../data/repositories/finance_repository.dart';
 import '../../../shared/widgets/meemo_mascot.dart';
 import '../widgets/balance_hero_card.dart';
@@ -42,7 +41,84 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   ExpenseCategoryPeriod _selectedCategoryPeriod = ExpenseCategoryPeriod.month;
 
-  void _showInsightDialog(BuildContext context) {
+  ({String badgeLabel, String message}) _insightCardCopy(
+    MonthlyInsightSummary insight,
+  ) {
+    if (!insight.hasAnyData) {
+      return (
+        badgeLabel: 'Info',
+        message:
+            'Belum ada transaksi bulan ini. Catat pemasukan dan pengeluaranmu untuk melihat ringkasan.',
+      );
+    }
+    if (insight.monthlyIncome == 0) {
+      final topCat = insight.topExpenseCategory?.name ?? 'Pengeluaran';
+      return (
+        badgeLabel: 'Ringkasan',
+        message:
+            'Pengeluaran bulan ini ${CurrencyFormatter.format(insight.monthlyExpense)}, terbesar di $topCat.',
+      );
+    }
+    final rate = insight.savingRatePercent ?? 0;
+    if (rate >= 0) {
+      final topCat = insight.topExpenseCategory;
+      final detail = topCat != null
+          ? ' Pengeluaran terbesar: ${topCat.name}.'
+          : ' Belum ada pengeluaran bulan ini.';
+      return (
+        badgeLabel: 'Hemat ${rate.toStringAsFixed(0)}%',
+        message:
+            'Selisih kas bulan ini ${CurrencyFormatter.format(insight.netBalance)}.$detail',
+      );
+    }
+    return (
+      badgeLabel: 'Defisit',
+      message:
+          'Pengeluaran melebihi pemasukan ${CurrencyFormatter.format(-insight.netBalance)} bulan ini.',
+    );
+  }
+
+  void _showInsightDialog(
+    BuildContext context,
+    MonthlyInsightSummary insight,
+    String walletName,
+  ) {
+    final String heading;
+    final String bodyText;
+    final String tipText;
+
+    if (!insight.hasAnyData) {
+      heading = 'Data Bulan Ini Belum Cukup';
+      bodyText =
+          'Belum ada transaksi tercatat pada $walletName untuk bulan ini. Catat pemasukan dan pengeluaranmu terlebih dahulu agar Meemo dapat menghitung ringkasan dan rasio tabungan.';
+      tipText =
+          'Saran Meemo: Mulai dengan mencatat transaksi harian secara rutin agar arus kas lebih mudah dipantau.';
+    } else if (insight.monthlyIncome == 0) {
+      heading = 'Ringkasan Pengeluaran Bulan Ini';
+      final topName = insight.topExpenseCategory?.name ?? 'Lainnya';
+      bodyText =
+          'Total pengeluaran pada $walletName bulan ini sebesar ${CurrencyFormatter.format(insight.monthlyExpense)}, terbesar pada kategori $topName (${CurrencyFormatter.format(insight.topExpenseAmount)}). Pemasukan bulan ini belum tercatat.';
+      tipText =
+          'Saran Meemo: Catat pemasukan bulan ini untuk mengetahui rasio tabungan dari penghasilanmu.';
+    } else {
+      heading = 'Rasio Tabungan Bulan Ini';
+      final rate = insight.savingRatePercent ?? 0;
+      final topPart = insight.topExpenseCategory != null
+          ? ' Pengeluaran terbesar ada di kategori ${insight.topExpenseCategory!.name} (${CurrencyFormatter.format(insight.topExpenseAmount)}).'
+          : ' Belum ada pengeluaran tercatat bulan ini.';
+      if (insight.netBalance >= 0) {
+        bodyText =
+            'Pemasukan ${CurrencyFormatter.format(insight.monthlyIncome)} dengan pengeluaran ${CurrencyFormatter.format(insight.monthlyExpense)} (rasio tabungan ${rate.toStringAsFixed(1)}%).$topPart';
+        tipText =
+            'Saran Meemo: Arus kas bulan ini surplus ${CurrencyFormatter.format(insight.netBalance)}. Pertahankan kebiasaan mencatat setiap transaksi.';
+      } else {
+        bodyText =
+            'Pengeluaran (${CurrencyFormatter.format(insight.monthlyExpense)}) melebihi pemasukan (${CurrencyFormatter.format(insight.monthlyIncome)}) sebesar ${CurrencyFormatter.format(-insight.netBalance)}.$topPart';
+        tipText =
+            'Saran Meemo: Tinjau ulang pengeluaran pada kategori terbesarmu agar arus kas kembali positif.';
+      }
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -57,7 +133,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             const MeemoMascot(size: 38, mood: MeemoMood.happy),
             const SizedBox(width: 10),
-            Text('Insight Catetin', style: AppTypography.headingSmall),
+            Expanded(
+              child: Text('Insight Catetin', style: AppTypography.headingSmall),
+            ),
           ],
         ),
         content: Column(
@@ -65,14 +143,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Rasio Tabungan Bulan Ini',
+              heading,
               style: AppTypography.labelLarge.copyWith(color: AppColors.primaryDark),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Berdasarkan catatan transaksi Anda, pengeluaran terbesar ada di kategori Makanan dan Belanja. Anda telah berhasil menghemat 35% dari pemasukan.',
-              style: AppTypography.bodyMedium,
-            ),
+            Text(bodyText, style: AppTypography.bodyMedium),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -82,7 +157,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 border: Border.all(color: AppColors.border, width: 1),
               ),
               child: Text(
-                'Saran Meemo: Pertahankan saldo tabungan darurat minimal setara 3 bulan pengeluaran rutin Anda.',
+                tipText,
                 style: AppTypography.bodySmall.copyWith(color: AppColors.ink),
               ),
             ),
@@ -102,44 +177,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _confirmDelete(BuildContext context, String transactionId) {
+    final messenger = ScaffoldMessenger.of(context);
+    var isDeleting = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppBorders.radiusLarge),
-          side: const BorderSide(
-            color: AppColors.border,
-            width: AppBorders.borderWidth,
-          ),
-        ),
-        title: Text('Hapus Transaksi?', style: AppTypography.headingSmall),
-        content: Text(
-          'Transaksi ini akan dihapus dari catatan keuangan Anda.',
-          style: AppTypography.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Batal', style: AppTypography.labelMedium),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.expense,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppBorders.radiusSmall),
-              ),
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppBorders.radiusLarge),
+            side: const BorderSide(
+              color: AppColors.border,
+              width: AppBorders.borderWidth,
             ),
-            onPressed: () {
-              widget.repository.deleteTransaction(transactionId);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Transaksi berhasil dihapus')),
-              );
-            },
-            child: const Text('Hapus'),
           ),
-        ],
+          title: Text('Hapus Transaksi?', style: AppTypography.headingSmall),
+          content: Text(
+            'Transaksi ini akan dihapus dari catatan keuangan Anda.',
+            style: AppTypography.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(ctx),
+              child: Text('Batal', style: AppTypography.labelMedium),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.expense,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppBorders.radiusSmall),
+                ),
+              ),
+              onPressed: isDeleting
+                  ? null
+                  : () async {
+                      setDialogState(() => isDeleting = true);
+                      try {
+                        await widget.repository.deleteTransaction(transactionId);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        messenger
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Transaksi berhasil dihapus'),
+                            ),
+                          );
+                      } catch (_) {
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        messenger
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              backgroundColor: AppColors.expense,
+                              content: Text('Gagal menghapus transaksi.'),
+                            ),
+                          );
+                      }
+                    },
+              child: isDeleting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text('Hapus'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -197,7 +310,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
               const Divider(color: AppColors.borderLight, height: 1),
-              ...WalletModel.defaultWallets.map((wallet) {
+              ...widget.repository.wallets.map((wallet) {
                 final isSelected =
                     widget.repository.selectedWalletId == wallet.id;
                 return ListTile(
@@ -401,12 +514,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final walletId = widget.repository.selectedWalletId;
     final selectedWalletName = walletId == 'all'
         ? 'Semua Dompet'
-        : WalletModel.getById(walletId).name;
+        : widget.repository.resolveWallet(walletId).name;
     final totalBalance = widget.repository.getBalanceForWallet(walletId);
     final monthlyIncome =
         widget.repository.getMonthlyIncome(now, walletId: walletId);
     final monthlyExpense =
         widget.repository.getMonthlyExpense(now, walletId: walletId);
+    final monthlyInsight =
+        widget.repository.getMonthlyInsightSummary(now, walletId: walletId);
+    final insightCopy = _insightCardCopy(monthlyInsight);
 
     // Weekly breakdown (Monday to Sunday of current calendar week)
     final weekRange = FinanceRepository.weekRangeFor(now);
@@ -431,7 +547,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           walletId: walletId,
         );
       case ExpenseCategoryPeriod.year:
-        categoryStart = DateTime(now.year - 1, now.month, now.day);
+        categoryStart = AppDateFormatter.subtractOneYear(now);
         categoryEnd = now;
         categoryPeriodBreakdown =
             widget.repository.getCategoryExpenseBreakdownForPeriod(
@@ -538,7 +654,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               // Meemo Smart Insight
               MeemoInsightCard(
-                onActionTap: () => _showInsightDialog(context),
+                badgeLabel: insightCopy.badgeLabel,
+                message: insightCopy.message,
+                onActionTap: () => _showInsightDialog(
+                  context,
+                  monthlyInsight,
+                  selectedWalletName,
+                ),
               ),
 
               const SizedBox(height: 18),
@@ -551,6 +673,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 breakdown: weeklyBreakdown,
                 emptyTitle: 'Belum ada pengeluaran minggu ini',
                 emptyActionHint: 'Catat transaksi pertamamu lewat tombol + di bawah.',
+                categoryResolver: widget.repository.resolveCategory,
                 onCategoryTap: (category, amount, percentage) {
                   final matchingTxs = widget.repository.getTransactionsForDateRange(
                     start: weekRange.start,
@@ -582,6 +705,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 emptyTitle: 'Belum ada pengeluaran pada periode ini',
                 emptyActionHint:
                     'Coba pilih periode lain atau catat pengeluaran baru.',
+                categoryResolver: widget.repository.resolveCategory,
                 headerTrailing: PopupMenuButton<ExpenseCategoryPeriod>(
                   tooltip: 'Pilih periode pengeluaran',
                   initialValue: _selectedCategoryPeriod,
@@ -674,6 +798,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               // Recent Transactions (single box, max 3 items)
               RecentTransactionsSection(
                 transactions: recentTransactions,
+                categoryResolver: widget.repository.resolveCategory,
+                walletResolver: widget.repository.resolveWallet,
                 onViewAllTap: () => widget.onNavigateTab(3),
                 onEditTransaction: widget.onEditTransaction,
                 onDeleteTransaction: (id) => _confirmDelete(context, id),

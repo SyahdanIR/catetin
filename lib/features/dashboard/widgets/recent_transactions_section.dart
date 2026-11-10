@@ -14,6 +14,8 @@ class RecentTransactionsSection extends StatelessWidget {
   final VoidCallback onViewAllTap;
   final Function(TransactionModel) onEditTransaction;
   final Function(String) onDeleteTransaction;
+  final CategoryModel Function(String id)? categoryResolver;
+  final WalletModel Function(String id)? walletResolver;
 
   const RecentTransactionsSection({
     super.key,
@@ -21,11 +23,13 @@ class RecentTransactionsSection extends StatelessWidget {
     required this.onViewAllTap,
     required this.onEditTransaction,
     required this.onDeleteTransaction,
+    this.categoryResolver,
+    this.walletResolver,
   });
 
   void _showTransactionDetailSheet(BuildContext context, TransactionModel tx) {
-    final category = CategoryModel.getById(tx.categoryId);
-    final wallet = WalletModel.getById(tx.walletId);
+    final category = (categoryResolver ?? CategoryModel.getById)(tx.categoryId);
+    final wallet = (walletResolver ?? WalletModel.getById)(tx.walletId);
     final isIncome = tx.type == TransactionType.income;
 
     showModalBottomSheet(
@@ -274,7 +278,8 @@ class RecentTransactionsSection extends StatelessWidget {
               ),
               itemBuilder: (context, index) {
                 final tx = visibleTransactions[index];
-                final category = CategoryModel.getById(tx.categoryId);
+                final category =
+                    (categoryResolver ?? CategoryModel.getById)(tx.categoryId);
                 final isIncome = tx.type == TransactionType.income;
 
                 return Material(

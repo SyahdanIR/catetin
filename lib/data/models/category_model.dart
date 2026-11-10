@@ -126,6 +126,16 @@ class CategoryModel {
     ),
   ];
 
+  static IconData iconForCodePoint(int codePoint) {
+    for (final cat in defaultCategories) {
+      if (cat.icon.codePoint == codePoint) {
+        return cat.icon;
+      }
+    }
+    // ignore: non_const_argument_for_const_parameter
+    return IconData(codePoint, fontFamily: 'MaterialIcons');
+  }
+
   static CategoryModel getById(String id) {
     return defaultCategories.firstWhere(
       (c) => c.id == id,

@@ -23,8 +23,10 @@ class CurrencyFormatter {
       final sign = isNegative ? '-' : '+';
       return includeSymbol ? '$sign Rp $formattedNumber' : '$sign$formattedNumber';
     } else {
-      final prefix = isNegative ? '- ' : '';
-      return includeSymbol ? '$prefix Rp $formattedNumber' : '$prefix$formattedNumber';
+      final prefix = isNegative ? '-' : '';
+      return includeSymbol
+          ? '${prefix}Rp $formattedNumber'
+          : '$prefix$formattedNumber';
     }
   }
 

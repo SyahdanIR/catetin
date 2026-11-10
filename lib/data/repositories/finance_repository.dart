@@ -4,45 +4,99 @@ import '../models/category_model.dart';
 import '../models/transaction_model.dart';
 import '../models/wallet_model.dart';
 
+/// Monthly insight metrics derived strictly from persisted transactions.
+class MonthlyInsightSummary {
+  final int monthlyIncome;
+  final int monthlyExpense;
+  final int netBalance;
+  final double? savingRatePercent;
+  final CategoryModel? topExpenseCategory;
+  final int topExpenseAmount;
+
+  const MonthlyInsightSummary({
+    required this.monthlyIncome,
+    required this.monthlyExpense,
+    required this.netBalance,
+    required this.savingRatePercent,
+    required this.topExpenseCategory,
+    required this.topExpenseAmount,
+  });
+
+  bool get hasAnyData => monthlyIncome > 0 || monthlyExpense > 0;
+}
+
 /// Central state and repository for Catetin financial transactions.
 ///
 /// Implements offline-first SQLite persistence via Drift with reactive updates.
 class FinanceRepository extends ChangeNotifier {
   final AppDatabase database;
 
-  FinanceRepository({required this.database}) {
-    init();
-  }
+  FinanceRepository({required this.database});
 
   final List<TransactionModel> _transactions = [];
   final List<WalletModel> _wallets = [];
   final List<CategoryModel> _categories = [];
   String _selectedWalletId = 'all';
   bool _isInitialized = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  Future<void>? _initFuture;
 
   List<TransactionModel> get transactions => List.unmodifiable(_transactions);
   List<WalletModel> get wallets => List.unmodifiable(_wallets);
   List<CategoryModel> get categories => List.unmodifiable(_categories);
   String get selectedWalletId => _selectedWalletId;
   bool get isInitialized => _isInitialized;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
 
   void setSelectedWallet(String walletId) {
     _selectedWalletId = walletId;
     notifyListeners();
   }
 
-  /// Initializes the repository by loading persisted data from SQLite.
-  Future<void> init() async {
-    await _loadFromDatabase();
+  /// Loads persisted data from SQLite once and prevents concurrent initialization runs.
+  Future<void> init() {
+    if (_isInitialized) return Future.value();
+    if (_initFuture != null) return _initFuture!;
 
-    // If first launch and database is empty, seed initial starter transactions
-    if (_transactions.isEmpty) {
-      await _seedInitialTransactions();
+    final future = _performInit();
+    _initFuture = future;
+    return future;
+  }
+
+  Future<void> _performInit() async {
+    _isLoading = true;
+    _errorMessage = null;
+    try {
       await _loadFromDatabase();
+      _isInitialized = true;
+    } catch (e) {
+      _errorMessage = 'Gagal memuat data keuangan: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      _initFuture = null;
+      notifyListeners();
     }
+  }
 
-    _isInitialized = true;
+  /// Reloads transactions, wallets, and categories from SQLite.
+  Future<void> refresh() async {
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
+
+    try {
+      await _loadFromDatabase();
+      _isInitialized = true;
+    } catch (e) {
+      _errorMessage = 'Gagal memuat ulang data keuangan: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadFromDatabase() async {
@@ -61,168 +115,143 @@ class FinanceRepository extends ChangeNotifier {
     _categories.addAll(catList);
   }
 
-  Future<void> _seedInitialTransactions() async {
-    final now = DateTime.now();
-    final year = now.year;
-    final month = now.month;
-
-    final initialList = [
-      TransactionModel(
-        id: 'tx_1',
-        title: 'Gaji Bulanan',
-        amount: 8500000,
-        type: TransactionType.income,
-        categoryId: 'salary',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 1, 9, 0),
-        note: 'Transfer payroll kantor',
-        source: 'manual',
-        createdAt: DateTime(year, month, 1, 9, 0),
-        updatedAt: DateTime(year, month, 1, 9, 0),
-        isRecurring: true,
-      ),
-      TransactionModel(
-        id: 'tx_2',
-        title: 'Makan Siang & Kopi',
-        amount: 55000,
-        type: TransactionType.expense,
-        categoryId: 'food',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 2, 12, 30),
-        note: 'Ayam geprek & es kopi susu',
-        source: 'manual',
-        createdAt: DateTime(year, month, 2, 12, 30),
-        updatedAt: DateTime(year, month, 2, 12, 30),
-      ),
-      TransactionModel(
-        id: 'tx_3',
-        title: 'Tiket Kereta & MRT',
-        amount: 32000,
-        type: TransactionType.expense,
-        categoryId: 'transport',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 3, 8, 15),
-        source: 'manual',
-        createdAt: DateTime(year, month, 3, 8, 15),
-        updatedAt: DateTime(year, month, 3, 8, 15),
-      ),
-      TransactionModel(
-        id: 'tx_4',
-        title: 'Belanja Mingguan Supermarket',
-        amount: 420000,
-        type: TransactionType.expense,
-        categoryId: 'shopping',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 4, 16, 45),
-        note: 'Sayur, buah, telur',
-        source: 'manual',
-        createdAt: DateTime(year, month, 4, 16, 45),
-        updatedAt: DateTime(year, month, 4, 16, 45),
-      ),
-      TransactionModel(
-        id: 'tx_5',
-        title: 'Project Freelance UI Design',
-        amount: 2800000,
-        type: TransactionType.income,
-        categoryId: 'business',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 5, 14, 0),
-        note: 'DP termin 1 aplikasi e-commerce',
-        source: 'manual',
-        createdAt: DateTime(year, month, 5, 14, 0),
-        updatedAt: DateTime(year, month, 5, 14, 0),
-      ),
-      TransactionModel(
-        id: 'tx_6',
-        title: 'Langganan Internet & Wifi',
-        amount: 385000,
-        type: TransactionType.expense,
-        categoryId: 'bills',
-        walletId: 'main_wallet',
-        transactionDate: DateTime(year, month, 6, 10, 0),
-        source: 'manual',
-        createdAt: DateTime(year, month, 6, 10, 0),
-        updatedAt: DateTime(year, month, 6, 10, 0),
-        isRecurring: true,
-      ),
-    ];
-
-    for (final tx in initialList) {
-      await database.insertTransactionRow(tx);
-    }
-  }
-
   // --- CRUD Operations ---
 
   Future<void> addTransaction(TransactionModel transaction) async {
-    await database.insertTransactionRow(transaction);
-    await _loadFromDatabase();
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
+
+    try {
+      await database.insertTransactionRow(transaction);
+      await _loadFromDatabase();
+    } catch (e) {
+      _errorMessage = 'Gagal menyimpan transaksi: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> updateTransaction(TransactionModel transaction) async {
-    await database.updateTransactionRow(transaction);
-    await _loadFromDatabase();
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
+
+    try {
+      await database.updateTransactionRow(transaction);
+      await _loadFromDatabase();
+    } catch (e) {
+      _errorMessage = 'Gagal memperbarui transaksi: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> deleteTransaction(String id) async {
-    await database.deleteTransactionRow(id);
-    await _loadFromDatabase();
+    _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
+
+    try {
+      await database.deleteTransactionRow(id);
+      await _loadFromDatabase();
+    } catch (e) {
+      _errorMessage = 'Gagal menghapus transaksi: $e';
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // --- Database-backed Lookups ---
+
+  CategoryModel? getCategoryById(String id) {
+    for (final cat in _categories) {
+      if (cat.id == id) return cat;
+    }
+    return null;
+  }
+
+  CategoryModel resolveCategory(String id) {
+    return getCategoryById(id) ?? CategoryModel.getById(id);
+  }
+
+  WalletModel? getWalletById(String id) {
+    for (final wallet in _wallets) {
+      if (wallet.id == id) return wallet;
+    }
+    return null;
+  }
+
+  WalletModel resolveWallet(String id) {
+    return getWalletById(id) ?? WalletModel.getById(id);
   }
 
   // --- Calculations (AGENTS.md Section 7) ---
 
-  /// Total Balance = Initial Balance + Total Income - Total Expenses
-  int getTotalBalance() {
-    int total = _wallets.fold(0, (sum, w) => sum + w.initialBalance);
-    for (final tx in _transactions) {
+  static bool _matchesWallet(TransactionModel tx, String? walletId) {
+    return walletId == null || walletId == 'all' || tx.walletId == walletId;
+  }
+
+  static ({DateTime startInclusive, DateTime endExclusive}) _inclusiveDayBounds(
+    DateTime start,
+    DateTime end,
+  ) {
+    return (
+      startInclusive: DateTime(start.year, start.month, start.day),
+      endExclusive: DateTime(end.year, end.month, end.day + 1),
+    );
+  }
+
+  /// Net balance difference computed from income and expense totals.
+  static int calculateNetAmount(int income, int expense) => income - expense;
+
+  /// Net balance across an arbitrary list of transactions (e.g. a grouped day).
+  int calculateTransactionsNetBalance(Iterable<TransactionModel> items) {
+    int net = 0;
+    for (final tx in items) {
       if (tx.type == TransactionType.income) {
-        total += tx.amount;
+        net += tx.amount;
       } else {
-        total -= tx.amount;
+        net -= tx.amount;
       }
     }
-    return total;
+    return net;
   }
 
-  int getTotalIncome() {
+  /// Total Balance = Initial Balance + Total Income - Total Expenses.
+  int getTotalBalance() {
+    final initialTotal =
+        _wallets.fold<int>(0, (sum, w) => sum + w.initialBalance);
+    return initialTotal + calculateTransactionsNetBalance(_transactions);
+  }
+
+  int getTotalIncome({String? walletId}) {
     return _transactions
-        .where((t) => t.type == TransactionType.income)
+        .where((t) =>
+            t.type == TransactionType.income && _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
-  int getTotalExpense() {
+  int getTotalExpense({String? walletId}) {
     return _transactions
-        .where((t) => t.type == TransactionType.expense)
+        .where((t) =>
+            t.type == TransactionType.expense && _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
-  CategoryModel? getCategoryById(String id) {
-    try {
-      return _categories.firstWhere((c) => c.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Wallet Balance = Wallet Initial Balance + Wallet Income - Wallet Expenses
+  /// Wallet Balance = Wallet Initial Balance + Wallet Income - Wallet Expenses.
   int getBalanceForWallet(String walletId) {
     if (walletId == 'all') {
       return getTotalBalance();
     }
-    final wallet = _wallets.firstWhere(
-      (w) => w.id == walletId,
-      orElse: () => WalletModel(
-        id: walletId,
-        name: 'Dompet',
-        initialBalance: 0,
-        createdAt: DateTime.now(),
-      ),
-    );
-
-    int total = wallet.initialBalance;
+    final wallet = getWalletById(walletId);
+    int total = wallet?.initialBalance ?? 0;
     for (final tx in _transactions) {
       if (tx.walletId == walletId) {
         if (tx.type == TransactionType.income) {
@@ -241,7 +270,7 @@ class FinanceRepository extends ChangeNotifier {
             t.type == TransactionType.income &&
             t.transactionDate.year == month.year &&
             t.transactionDate.month == month.month &&
-            (walletId == null || walletId == 'all' || t.walletId == walletId))
+            _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
@@ -251,8 +280,36 @@ class FinanceRepository extends ChangeNotifier {
             t.type == TransactionType.expense &&
             t.transactionDate.year == month.year &&
             t.transactionDate.month == month.month &&
-            (walletId == null || walletId == 'all' || t.walletId == walletId))
+            _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
+  }
+
+  int getMonthlyNetBalance(DateTime month, {String? walletId}) {
+    return calculateNetAmount(
+      getMonthlyIncome(month, walletId: walletId),
+      getMonthlyExpense(month, walletId: walletId),
+    );
+  }
+
+  int getNetBalance({DateTime? month, String? walletId}) {
+    if (month != null) {
+      return getMonthlyNetBalance(month, walletId: walletId);
+    }
+    return calculateNetAmount(
+      getTotalIncome(walletId: walletId),
+      getTotalExpense(walletId: walletId),
+    );
+  }
+
+  int getDailyNetBalance(DateTime date, {String? walletId}) {
+    final start = DateTime(date.year, date.month, date.day);
+    final nextDay = DateTime(date.year, date.month, date.day + 1);
+    return calculateTransactionsNetBalance(
+      _transactions.where((t) =>
+          !t.transactionDate.isBefore(start) &&
+          t.transactionDate.isBefore(nextDay) &&
+          _matchesWallet(t, walletId)),
+    );
   }
 
   List<TransactionModel> getRecentTransactions({
@@ -279,7 +336,7 @@ class FinanceRepository extends ChangeNotifier {
           return false;
         }
       }
-      if (walletId != null && walletId != 'all' && t.walletId != walletId) {
+      if (!_matchesWallet(t, walletId)) {
         return false;
       }
       if (typeFilter != null && t.type != typeFilter) {
@@ -293,7 +350,7 @@ class FinanceRepository extends ChangeNotifier {
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
         final query = searchQuery.toLowerCase().trim();
         final matchesTitle = t.title.toLowerCase().contains(query);
-        final category = CategoryModel.getById(t.categoryId);
+        final category = resolveCategory(t.categoryId);
         final matchesCategory = category.name.toLowerCase().contains(query);
         final matchesNotes = t.note?.toLowerCase().contains(query) ?? false;
         if (!matchesTitle && !matchesCategory && !matchesNotes) {
@@ -304,56 +361,96 @@ class FinanceRepository extends ChangeNotifier {
     }).toList();
   }
 
-  Map<String, int> getCategoryExpenseBreakdown(DateTime month) {
+  Map<String, int> getCategoryExpenseBreakdown(
+    DateTime month, {
+    String? walletId,
+  }) {
     final Map<String, int> breakdown = {};
     for (final tx in _transactions) {
       if (tx.type == TransactionType.expense &&
           tx.transactionDate.year == month.year &&
-          tx.transactionDate.month == month.month) {
+          tx.transactionDate.month == month.month &&
+          _matchesWallet(tx, walletId)) {
         breakdown[tx.categoryId] = (breakdown[tx.categoryId] ?? 0) + tx.amount;
       }
     }
     return breakdown;
   }
 
-  double getSavingRate(DateTime month) {
-    final income = getMonthlyIncome(month);
-    final expense = getMonthlyExpense(month);
+  double getSavingRate(DateTime month, {String? walletId}) {
+    final income = getMonthlyIncome(month, walletId: walletId);
+    final expense = getMonthlyExpense(month, walletId: walletId);
     if (income <= 0) return 0.0;
-    final saved = income - expense;
+    final saved = calculateNetAmount(income, expense);
     if (saved <= 0) return 0.0;
     return (saved / income) * 100;
   }
 
-  // --- Phase 2: Arbitrary Period & Date Range Calculations ---
+  MonthlyInsightSummary getMonthlyInsightSummary(
+    DateTime month, {
+    String? walletId,
+  }) {
+    final income = getMonthlyIncome(month, walletId: walletId);
+    final expense = getMonthlyExpense(month, walletId: walletId);
+    final net = calculateNetAmount(income, expense);
+    final breakdown = getCategoryExpenseBreakdown(month, walletId: walletId);
 
-  /// Income within an arbitrary date range (inclusive of start and end day)
+    CategoryModel? topCategory;
+    int topAmount = 0;
+    for (final entry in breakdown.entries) {
+      if (entry.value > topAmount) {
+        topAmount = entry.value;
+        topCategory = resolveCategory(entry.key);
+      }
+    }
+
+    final double? savingRate =
+        income > 0 ? ((income - expense) / income) * 100 : null;
+
+    return MonthlyInsightSummary(
+      monthlyIncome: income,
+      monthlyExpense: expense,
+      netBalance: net,
+      savingRatePercent: savingRate,
+      topExpenseCategory: topCategory,
+      topExpenseAmount: topAmount,
+    );
+  }
+
+  // --- Arbitrary Period & Date Range Calculations ---
+
+  /// Income within [start] through [end] inclusive of full end calendar day.
   int getPeriodIncome(DateTime start, DateTime end, {String? walletId}) {
-    final s = DateTime(start.year, start.month, start.day, 0, 0, 0);
-    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    final bounds = _inclusiveDayBounds(start, end);
     return _transactions
         .where((t) =>
             t.type == TransactionType.income &&
-            !t.transactionDate.isBefore(s) &&
-            !t.transactionDate.isAfter(e) &&
-            (walletId == null || walletId == 'all' || t.walletId == walletId))
+            !t.transactionDate.isBefore(bounds.startInclusive) &&
+            t.transactionDate.isBefore(bounds.endExclusive) &&
+            _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
-  /// Expense within an arbitrary date range (inclusive of start and end day)
+  /// Expense within [start] through [end] inclusive of full end calendar day.
   int getPeriodExpense(DateTime start, DateTime end, {String? walletId}) {
-    final s = DateTime(start.year, start.month, start.day, 0, 0, 0);
-    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    final bounds = _inclusiveDayBounds(start, end);
     return _transactions
         .where((t) =>
             t.type == TransactionType.expense &&
-            !t.transactionDate.isBefore(s) &&
-            !t.transactionDate.isAfter(e) &&
-            (walletId == null || walletId == 'all' || t.walletId == walletId))
+            !t.transactionDate.isBefore(bounds.startInclusive) &&
+            t.transactionDate.isBefore(bounds.endExclusive) &&
+            _matchesWallet(t, walletId))
         .fold<int>(0, (sum, t) => sum + t.amount);
   }
 
-  /// Transactions within an arbitrary date range with optional filters
+  int getPeriodNetBalance(DateTime start, DateTime end, {String? walletId}) {
+    return calculateNetAmount(
+      getPeriodIncome(start, end, walletId: walletId),
+      getPeriodExpense(start, end, walletId: walletId),
+    );
+  }
+
+  /// Transactions within [start] through [end] inclusive of full end calendar day.
   List<TransactionModel> getTransactionsForDateRange({
     required DateTime start,
     required DateTime end,
@@ -362,13 +459,13 @@ class FinanceRepository extends ChangeNotifier {
     String? searchQuery,
     String? walletId,
   }) {
-    final s = DateTime(start.year, start.month, start.day, 0, 0, 0);
-    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    final bounds = _inclusiveDayBounds(start, end);
     return _transactions.where((t) {
-      if (t.transactionDate.isBefore(s) || t.transactionDate.isAfter(e)) {
+      if (t.transactionDate.isBefore(bounds.startInclusive) ||
+          !t.transactionDate.isBefore(bounds.endExclusive)) {
         return false;
       }
-      if (walletId != null && walletId != 'all' && t.walletId != walletId) {
+      if (!_matchesWallet(t, walletId)) {
         return false;
       }
       if (typeFilter != null && t.type != typeFilter) {
@@ -382,7 +479,7 @@ class FinanceRepository extends ChangeNotifier {
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
         final query = searchQuery.toLowerCase().trim();
         final matchesTitle = t.title.toLowerCase().contains(query);
-        final category = CategoryModel.getById(t.categoryId);
+        final category = resolveCategory(t.categoryId);
         final matchesCategory = category.name.toLowerCase().contains(query);
         final matchesNotes = t.note?.toLowerCase().contains(query) ?? false;
         if (!matchesTitle && !matchesCategory && !matchesNotes) {
@@ -393,20 +490,19 @@ class FinanceRepository extends ChangeNotifier {
     }).toList();
   }
 
-  /// Category expense breakdown within an arbitrary date range
+  /// Category expense breakdown within [start] through [end] inclusive.
   Map<String, int> getCategoryExpenseBreakdownForPeriod(
     DateTime start,
     DateTime end, {
     String? walletId,
   }) {
-    final s = DateTime(start.year, start.month, start.day, 0, 0, 0);
-    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    final bounds = _inclusiveDayBounds(start, end);
     final Map<String, int> breakdown = {};
     for (final tx in _transactions) {
       if (tx.type == TransactionType.expense &&
-          !tx.transactionDate.isBefore(s) &&
-          !tx.transactionDate.isAfter(e) &&
-          (walletId == null || walletId == 'all' || tx.walletId == walletId)) {
+          !tx.transactionDate.isBefore(bounds.startInclusive) &&
+          tx.transactionDate.isBefore(bounds.endExclusive) &&
+          _matchesWallet(tx, walletId)) {
         breakdown[tx.categoryId] = (breakdown[tx.categoryId] ?? 0) + tx.amount;
       }
     }
@@ -442,19 +538,19 @@ class FinanceRepository extends ChangeNotifier {
     final Map<String, int> breakdown = {};
     for (final tx in _transactions) {
       if (tx.type == TransactionType.expense &&
-          (walletId == null || walletId == 'all' || tx.walletId == walletId)) {
+          _matchesWallet(tx, walletId)) {
         breakdown[tx.categoryId] = (breakdown[tx.categoryId] ?? 0) + tx.amount;
       }
     }
     return breakdown;
   }
 
-  /// Saving rate within an arbitrary date range
+  /// Saving rate within an arbitrary date range.
   double getPeriodSavingRate(DateTime start, DateTime end, {String? walletId}) {
     final income = getPeriodIncome(start, end, walletId: walletId);
     final expense = getPeriodExpense(start, end, walletId: walletId);
     if (income <= 0) return 0.0;
-    final saved = income - expense;
+    final saved = calculateNetAmount(income, expense);
     if (saved <= 0) return 0.0;
     return (saved / income) * 100;
   }

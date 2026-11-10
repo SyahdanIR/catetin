@@ -14,6 +14,7 @@ class TransactionFilterBar extends StatelessWidget {
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onClearSearch;
+  final List<CategoryModel> categories;
 
   const TransactionFilterBar({
     super.key,
@@ -24,6 +25,7 @@ class TransactionFilterBar extends StatelessWidget {
     required this.searchController,
     required this.onSearchChanged,
     required this.onClearSearch,
+    this.categories = CategoryModel.defaultCategories,
   });
 
   @override
@@ -167,7 +169,7 @@ class TransactionFilterBar extends StatelessWidget {
                   isSelected: selectedCategory == 'all',
                   onTap: () => onCategorySelected('all'),
                 ),
-                ...CategoryModel.defaultCategories.map(
+                ...categories.map(
                   (cat) => TactileChip(
                     label: cat.name,
                     icon: cat.icon,

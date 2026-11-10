@@ -38,6 +38,17 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _iconCodePointMeta = const VerificationMeta(
+    'iconCodePoint',
+  );
+  @override
+  late final GeneratedColumn<int> iconCodePoint = GeneratedColumn<int>(
+    'icon_code_point',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -50,7 +61,13 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, initialBalance, createdAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    initialBalance,
+    iconCodePoint,
+    createdAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -85,6 +102,15 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
         ),
       );
     }
+    if (data.containsKey('icon_code_point')) {
+      context.handle(
+        _iconCodePointMeta,
+        iconCodePoint.isAcceptableOrUnknown(
+          data['icon_code_point']!,
+          _iconCodePointMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -114,6 +140,10 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
         DriftSqlType.int,
         data['${effectivePrefix}initial_balance'],
       )!,
+      iconCodePoint: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}icon_code_point'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -131,11 +161,13 @@ class Wallet extends DataClass implements Insertable<Wallet> {
   final String id;
   final String name;
   final int initialBalance;
+  final int? iconCodePoint;
   final DateTime createdAt;
   const Wallet({
     required this.id,
     required this.name,
     required this.initialBalance,
+    this.iconCodePoint,
     required this.createdAt,
   });
   @override
@@ -144,6 +176,9 @@ class Wallet extends DataClass implements Insertable<Wallet> {
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['initial_balance'] = Variable<int>(initialBalance);
+    if (!nullToAbsent || iconCodePoint != null) {
+      map['icon_code_point'] = Variable<int>(iconCodePoint);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -153,6 +188,9 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       id: Value(id),
       name: Value(name),
       initialBalance: Value(initialBalance),
+      iconCodePoint: iconCodePoint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(iconCodePoint),
       createdAt: Value(createdAt),
     );
   }
@@ -166,6 +204,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       initialBalance: serializer.fromJson<int>(json['initialBalance']),
+      iconCodePoint: serializer.fromJson<int?>(json['iconCodePoint']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -176,6 +215,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'initialBalance': serializer.toJson<int>(initialBalance),
+      'iconCodePoint': serializer.toJson<int?>(iconCodePoint),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -184,11 +224,15 @@ class Wallet extends DataClass implements Insertable<Wallet> {
     String? id,
     String? name,
     int? initialBalance,
+    Value<int?> iconCodePoint = const Value.absent(),
     DateTime? createdAt,
   }) => Wallet(
     id: id ?? this.id,
     name: name ?? this.name,
     initialBalance: initialBalance ?? this.initialBalance,
+    iconCodePoint: iconCodePoint.present
+        ? iconCodePoint.value
+        : this.iconCodePoint,
     createdAt: createdAt ?? this.createdAt,
   );
   Wallet copyWithCompanion(WalletsCompanion data) {
@@ -198,6 +242,9 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       initialBalance: data.initialBalance.present
           ? data.initialBalance.value
           : this.initialBalance,
+      iconCodePoint: data.iconCodePoint.present
+          ? data.iconCodePoint.value
+          : this.iconCodePoint,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -208,13 +255,15 @@ class Wallet extends DataClass implements Insertable<Wallet> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('initialBalance: $initialBalance, ')
+          ..write('iconCodePoint: $iconCodePoint, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, initialBalance, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, initialBalance, iconCodePoint, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -222,6 +271,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
           other.id == this.id &&
           other.name == this.name &&
           other.initialBalance == this.initialBalance &&
+          other.iconCodePoint == this.iconCodePoint &&
           other.createdAt == this.createdAt);
 }
 
@@ -229,12 +279,14 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
   final Value<String> id;
   final Value<String> name;
   final Value<int> initialBalance;
+  final Value<int?> iconCodePoint;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const WalletsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.initialBalance = const Value.absent(),
+    this.iconCodePoint = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -242,6 +294,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     required String id,
     required String name,
     this.initialBalance = const Value.absent(),
+    this.iconCodePoint = const Value.absent(),
     required DateTime createdAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -251,6 +304,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<int>? initialBalance,
+    Expression<int>? iconCodePoint,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -258,6 +312,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (initialBalance != null) 'initial_balance': initialBalance,
+      if (iconCodePoint != null) 'icon_code_point': iconCodePoint,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -267,6 +322,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     Value<String>? id,
     Value<String>? name,
     Value<int>? initialBalance,
+    Value<int?>? iconCodePoint,
     Value<DateTime>? createdAt,
     Value<int>? rowid,
   }) {
@@ -274,6 +330,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
       id: id ?? this.id,
       name: name ?? this.name,
       initialBalance: initialBalance ?? this.initialBalance,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -291,6 +348,9 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     if (initialBalance.present) {
       map['initial_balance'] = Variable<int>(initialBalance.value);
     }
+    if (iconCodePoint.present) {
+      map['icon_code_point'] = Variable<int>(iconCodePoint.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -306,6 +366,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('initialBalance: $initialBalance, ')
+          ..write('iconCodePoint: $iconCodePoint, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1463,6 +1524,7 @@ typedef $$WalletsTableCreateCompanionBuilder = WalletsCompanion Function({
   required String id,
   required String name,
   Value<int> initialBalance,
+  Value<int?> iconCodePoint,
   required DateTime createdAt,
   Value<int> rowid,
 });
@@ -1470,6 +1532,7 @@ typedef $$WalletsTableUpdateCompanionBuilder = WalletsCompanion Function({
   Value<String> id,
   Value<String> name,
   Value<int> initialBalance,
+  Value<int?> iconCodePoint,
   Value<DateTime> createdAt,
   Value<int> rowid,
 });
@@ -1518,6 +1581,11 @@ class $$WalletsTableFilterComposer
 
   ColumnFilters<int> get initialBalance => $composableBuilder(
     column: $table.initialBalance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get iconCodePoint => $composableBuilder(
+    column: $table.iconCodePoint,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1576,6 +1644,11 @@ class $$WalletsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get iconCodePoint => $composableBuilder(
+    column: $table.iconCodePoint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -1599,6 +1672,11 @@ class $$WalletsTableAnnotationComposer
 
   GeneratedColumn<int> get initialBalance => $composableBuilder(
     column: $table.initialBalance,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get iconCodePoint => $composableBuilder(
+    column: $table.iconCodePoint,
     builder: (column) => column,
   );
 
@@ -1662,12 +1740,14 @@ class $$WalletsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int> initialBalance = const Value.absent(),
+                Value<int?> iconCodePoint = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => WalletsCompanion(
                 id: id,
                 name: name,
                 initialBalance: initialBalance,
+                iconCodePoint: iconCodePoint,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -1676,12 +1756,14 @@ class $$WalletsTableTableManager
                 required String id,
                 required String name,
                 Value<int> initialBalance = const Value.absent(),
+                Value<int?> iconCodePoint = const Value.absent(),
                 required DateTime createdAt,
                 Value<int> rowid = const Value.absent(),
               }) => WalletsCompanion.insert(
                 id: id,
                 name: name,
                 initialBalance: initialBalance,
+                iconCodePoint: iconCodePoint,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
